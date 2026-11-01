@@ -138,7 +138,8 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         """健康检查。"""
         if self.path.startswith("/health"):
-            return self._reply(200, {"ok": True, "loaded": _state["model"] is not None,
+            return self._reply(200, {"ok": True, "service": "asr", "protocol": 1,
+                                     "loaded": _state["model"] is not None,
                                      "device": _state["device"], "model": _state.get("model_name")})
         return self._reply(404, {"ok": False, "error": "unknown path"})
 

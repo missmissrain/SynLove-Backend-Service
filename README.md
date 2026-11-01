@@ -18,6 +18,8 @@
 
 本机部署时，后台服务可以和个人智能体放在同一台机器；远程部署时，只需在 GUI 的 Backend Service 配置中填写服务器地址和端口。
 
+TTS 和 ASR 的 `/health` 会返回 `service`、`protocol: 1` 和运行信息，供本机 GUI 进行端口身份确认。LLM 使用兼容接口的健康响应和模型服务状态确认。
+
 ## 目录
 
 - `synlove-tts`：TTS HTTP 服务
