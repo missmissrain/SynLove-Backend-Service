@@ -235,6 +235,8 @@ class Handler(BaseHTTPRequestHandler):
         if self.path.startswith("/health"):
             return self._reply(200, {
                 "ok": True,
+                "service": "tts",
+                "protocol": 1,
                 "loaded": _state["runtime"] is not None,
                 "device": _state["device"],
                 "ckpt": _state["ckpt"],
