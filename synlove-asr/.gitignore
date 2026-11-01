@@ -1,0 +1,13 @@
+# 运行产物
+runtime/
+*.log
+*.txt.out
+
+# HF 缓存与模型（默认在用户目录，这里再挡一层）
+models/
+*.bin
+
+# Python
+__pycache__/
+*.pyc
+.venv/
