@@ -1,0 +1,12 @@
+# 权重与运行产物（体积大）
+model/
+.parts/
+runtime/
+*.log
+
+# 上游引擎
+llama.cpp/
+
+# Python
+__pycache__/
+*.pyc

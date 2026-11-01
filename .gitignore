@@ -1,0 +1,14 @@
+__pycache__/
+*.pyc
+.venv/
+node_modules/
+.env
+*.env.local
+models/
+*.gguf
+*.bin
+*.safetensors
+config/secrets.json
+runtime/
+logs/
+downloads/
