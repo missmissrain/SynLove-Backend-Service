@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "services": {
+    "llm": {"baseURL":"http://127.0.0.1:8080/v1","management":"external","model":"gemma","timeoutSeconds":900,"apiKeyEnv":"SYNLOVE_LLM_API_KEY"},
+    "asr": {"baseURL":"http://127.0.0.1:8081/v1","management":"external","model":"small","timeoutSeconds":900,"apiKeyEnv":"SYNLOVE_ASR_API_KEY"},
+    "tts": {"baseURL":"http://127.0.0.1:7862/v1","management":"external","model":"tts","timeoutSeconds":900,"apiKeyEnv":"SYNLOVE_TTS_API_KEY"},
+    "rsshub": {"baseURL":"http://127.0.0.1:1200","management":"external","timeoutSeconds":30},
+    "reminders": {"baseURL":"http://127.0.0.1:8791/v1","management":"managed","timeoutSeconds":60,"databasePath":"runtime/reminders.db","apiKeyEnv":"SYNLOVE_BUSINESS_API_KEY"},
+    "digest": {"baseURL":"http://127.0.0.1:8792/v1","management":"managed","timeoutSeconds":1200,"databasePath":"runtime/newsDigest.db","apiKeyEnv":"SYNLOVE_BUSINESS_API_KEY"},
+    "video": {"baseURL":"http://127.0.0.1:8793/v1","management":"managed","timeoutSeconds":3600,"workDir":"runtime/videoService","apiKeyEnv":"SYNLOVE_BUSINESS_API_KEY"},
+    "crawler": {"baseURL":"http://127.0.0.1:8796/v1","management":"managed","timeoutSeconds":900,"apiKeyEnv":"SYNLOVE_BUSINESS_API_KEY"}
+  }
+}

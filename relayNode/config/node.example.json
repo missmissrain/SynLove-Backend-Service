@@ -1,0 +1,20 @@
+{
+  "hubUrl":"wss://relay.example.invalid/ws/node",
+  "token":"${RELAY_TOKEN}",
+  "nodeId":"synlove-business-home",
+  "name":"家庭后台功能",
+  "heartbeatSeconds":10,
+  "logFile":"logs/businessNode.log",
+  "capabilities":[
+    {"name":"crawlerCenter","priority":10,"concurrency":4},
+    {"name":"webCollection","priority":10,"concurrency":4},
+    {"name":"scheduler","priority":10,"concurrency":4},
+    {"name":"video","priority":10,"concurrency":4}
+  ],
+  "workers":{
+    "crawlerCenter":{"mode":"synlove-business","baseUrl":"http://127.0.0.1:8792","apiKeyEnv":"SYNLOVE_BUSINESS_API_KEY","timeoutMs":30000},
+    "webCollection":{"mode":"synlove-business","baseUrl":"http://127.0.0.1:8796","apiKeyEnv":"SYNLOVE_BUSINESS_API_KEY","timeoutMs":30000},
+    "scheduler":{"mode":"synlove-business","baseUrl":"http://127.0.0.1:8791","apiKeyEnv":"SYNLOVE_BUSINESS_API_KEY","timeoutMs":30000},
+    "video":{"mode":"synlove-business","baseUrl":"http://127.0.0.1:8793","apiKeyEnv":"SYNLOVE_BUSINESS_API_KEY","timeoutMs":30000}
+  }
+}

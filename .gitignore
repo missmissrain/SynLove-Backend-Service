@@ -12,3 +12,13 @@ config/secrets.json
 runtime/
 logs/
 downloads/
+**/node_modules/
+**/dist/
+businessRuntime/runtime/
+businessRuntime/config/serviceConfig.json
+businessRuntime/newsDigest/config/newsDigest.json
+businessRuntime/reminders/config/reminderConfig.json
+businessRuntime/videoDigest/config/videoDigest.json
+relayNode/config/node.json
+**/privateMigration/
+**/*.beforeMigration.json
