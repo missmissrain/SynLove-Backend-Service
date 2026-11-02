@@ -29,20 +29,26 @@ TTS 和 ASR 的 `/health` 会返回统一身份字段：
 
 同一台机器部署时，两个仓库可以放在不同目录。远程部署时，只把公共服务指向服务器；个人数据、消息队列和日志仍留在本机。远程机器建议只开内网端口或放在反向代理后面，并为服务设置独立 API Key，不要把管理端口直接暴露到公网。
 
+每日新闻的计划时间、开关及当天执行标记由 `SynLove-Personal-Agent` 的新闻微服务维护。Codex/OpenCode 的完成检测、去重、结果润色和 QQ 推送也在个人实例运行；润色可以调用配置的模型接口。部署本仓库不需要复制个人会话数据库，也不要在服务器另建同一用户的消息消费者或重复定时任务。
+
 ## 快速启动
 
-先准备 Python 3.9+。TTS 和 Gemma 的权重较大，单独安装：
+先准备 Python 3.9+；实际推理环境还须满足各子目录的依赖要求。下面每组命令均从仓库根目录开始，在各服务自己的环境中执行。
 
 ```bat
 :: ASR：安装依赖后启动
 cd synlove-asr
 pip install -r requirements.txt
 python services\whisperService.py --port 8081 --model small --device auto
+```
 
+```bat
 :: TTS：需要先按 synlove-tts\README.md 准备上游推理代码和权重
 cd synlove-tts
 python services\breezeTtsService.py --port 7862 --ckpt <权重目录> --idle-seconds 600
+```
 
+```bat
 :: 本地 LLM：需要 llama.cpp 和 GGUF 权重
 cd synlove-gemma
 python serve.py --model <模型.gguf> --mmproj <视觉投影.gguf> --port 8080 --ctx 32768 --ngl 99
@@ -68,6 +74,14 @@ TTS 不带 `instruction` 时会把 `cfgScale` 设为 `1.0`。这是必须的：�
 密钥、模型权重、用户数据、日志和真实服务器地址不进入仓库。`deploy/services.example.env` 只是占位模板，复制后填写，不要提交真实值。
 
 ## 最近更新
+
+### 配套职责说明版
+
+- 与主仓库的完成汇报修复版配套，明确新闻日程、会话读取、去重和 QQ 推送留在个人实例。
+- 按服务拆分启动示例，避免连续切换目录导致找不到脚本；补充各服务依赖要求。
+- 本轮更新为部署文档调整，TTS、ASR、LLM 的接口保持兼容。
+
+### 健康协议与 TTS 修复版
 
 - TTS 修复无 `instruction` 时 `cfgScale` 默认值导致的 HTTP 400，与主仓库保持一致。
 - `/health` 统一返回 `ok`、`service`、`protocol`，供控制台做端口身份确认。
