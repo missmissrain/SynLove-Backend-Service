@@ -3,7 +3,7 @@
 把 Breeze-TTS-2 包成一个**用完就退**的本地 HTTP 服务：一次请求合成一段语音（长文本按句切段再拼接），
 合成完立刻释放显存。给本地 AI 管家发语音条用，也可以单独调。
 
-主项目：[missmissrain/wechat-ai-butler](https://github.com/missmissrain/wechat-ai-butler)。
+主项目：[missmissrain/SynLove-Personal-Agent](https://github.com/missmissrain/SynLove-Personal-Agent)。
 
 ## 权重与来源（重要）
 

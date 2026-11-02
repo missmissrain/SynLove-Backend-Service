@@ -2,7 +2,7 @@
 
 把 faster-whisper 包成本地 HTTP 服务：**懒加载、闲置自动退出**、CUDA 显存不足自动转 CPU int8。
 
-主项目：[missmissrain/wechat-ai-butler](https://github.com/missmissrain/wechat-ai-butler)。
+主项目：[missmissrain/SynLove-Personal-Agent](https://github.com/missmissrain/SynLove-Personal-Agent)。
 
 ## 模型与来源
 

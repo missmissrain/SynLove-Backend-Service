@@ -265,12 +265,16 @@ class Handler(BaseHTTPRequestHandler):
             _state["busy"] = True
             _state["last_active"] = time.time()
             try:
+                instruction = str(payload.get("instruction") or "").strip() or None
+                # 无音色描述时模板是 tts_plain，不支持 classifier-free guidance；
+                # 此时必须用 1.0，否则所有不带 instruction 的标准 TTS 请求都会 400。
+                cfg_scale = float(payload.get("cfgScale") or (4.0 if instruction else 1.0))
                 path, duration, count = speak(
                 text,
-                str(payload.get("instruction") or "").strip() or None,
+                instruction,
                 payload.get("refAudio"),
                 payload.get("refText"),
-                float(payload.get("cfgScale") or 4.0),
+                cfg_scale,
                 int(payload.get("seed") or 42),
                 int(payload.get("maxChars") or _state["max_chars"]),
                 )

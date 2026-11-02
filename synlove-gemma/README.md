@@ -3,7 +3,7 @@
 把 Gemma 4 E4B（GGUF）跑成本机 OpenAI 兼容服务：**分块并行下载 + SHA-256 校验 + 显存闸门 + 就绪探测**。
 给本地 AI 管家做摘要、图谱抽取、图片描述用，也可以直接 `curl` 调用。
 
-主项目：[missmissrain/wechat-ai-butler](https://github.com/missmissrain/wechat-ai-butler)。
+主项目：[missmissrain/SynLove-Personal-Agent](https://github.com/missmissrain/SynLove-Personal-Agent)。
 
 ## 权重与来源（重要）
 
