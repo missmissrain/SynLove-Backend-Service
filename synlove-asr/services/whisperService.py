@@ -3,7 +3,8 @@
 
 职责：
 - 首次请求时**懒加载**模型（默认 small；显存不足自动退 CPU int8），之后复用；
-- 提供 `POST /transcribe {"path": "...", "language": "zh"}` 与 `GET /health`；
+- 提供 `POST /v1/audio/transcriptions` 文件上传、`GET /health`；
+- 旧 `POST /transcribe {"path": "..."}` 仅保留给回环客户端；
 - **闲置 N 秒自动退出进程**（释放端口与显存）；
 - 模型下载默认走国内镜像（HF_ENDPOINT=https://hf-mirror.com，可用环境变量覆盖）。
 
@@ -20,7 +21,11 @@ import os
 import sys
 import threading
 import time
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from http.server import ThreadingHTTPServer
+if __package__:
+    from .AudioHttp import AudioHttp
+else:
+    from AudioHttp import AudioHttp
 
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 sys.stderr.reconfigure(encoding="utf-8", errors="replace")
@@ -29,6 +34,7 @@ sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 os.environ.setdefault("HF_ENDPOINT", "https://hf-mirror.com")
 
 _lock = threading.Lock()
+_request_lock = threading.Lock()
 _state = {"model": None, "device": "", "last_active": time.time(), "model_name": "", "requested_device": "auto"}
 
 
@@ -121,10 +127,11 @@ def transcribe(path, language, vad_filter=True):
             "model": _state["model_name"], "language": info.language}
 
 
-class Handler(BaseHTTPRequestHandler):
+class Handler(AudioHttp):
     """极简 HTTP：/health 与 /transcribe。"""
 
     server_version = "whisper-service/1.1"
+    token_env = "SYNLOVE_ASR_API_KEY"
 
     def _reply(self, code, payload):
         """写 JSON 响应。"""
@@ -137,6 +144,8 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         """健康检查。"""
+        if not self.authorized():
+            return
         if self.path.startswith("/health"):
             return self._reply(200, {"ok": True, "service": "asr", "protocol": 1,
                                      "loaded": _state["model"] is not None,
@@ -145,22 +154,44 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         """转写入口 / 卸载。"""
-        if self.path.startswith("/unload"):
+        if not self.authorized():
+            return
+        route = self.path.split("?")[0]
+        if route in ("/unload", "/transcribe") and not self.is_local():
+            return self._reply(403, {"ok": False, "error": "local endpoint only"})
+        if route == "/unload":
+            if not _request_lock.acquire(False):
+                return self._reply(409, {"ok": False, "error": "busy"})
             self._reply(200, {"ok": True, "note": "服务即将退出"})
             log("收到 /unload，退出进程")
             os._exit(0)
-        if not self.path.startswith("/transcribe"):
+        if route not in ("/transcribe", "/v1/audio/transcriptions", "/audio/transcriptions"):
             return self._reply(404, {"ok": False, "error": "unknown path"})
+        if not _request_lock.acquire(False):
+            return self._reply(429, {"ok": False, "error": "busy"})
+        temp = None
         try:
-            length = int(self.headers.get("Content-Length") or "0")
-            payload = json.loads(self.rfile.read(length).decode("utf-8") or "{}")
+            if route == "/transcribe":
+                payload = self.read_json()
+            else:
+                temp, fields = self.read_upload()
+                payload = {"path": temp, "language": fields.get("language"),
+                           "vadFilter": fields.get("vad_filter", "true") != "false"}
             _state["last_active"] = time.time()
             result = transcribe(str(payload.get("path", "")), payload.get("language"), bool(payload.get("vadFilter", True)))
             _state["last_active"] = time.time()
             return self._reply(200, result)
+        except ValueError as error:
+            self.close_connection = True
+            return self._reply(400, {"ok": False, "error": str(error)})
         except Exception as error:  # noqa: BLE001
             log(f"转写失败：{type(error).__name__}: {error}")
             return self._reply(500, {"ok": False, "error": f"{type(error).__name__}: {error}"})
+        finally:
+            if temp:
+                os.unlink(temp)
+            _state["last_active"] = time.time()
+            _request_lock.release()
 
     def log_message(self, fmt, *args):  # noqa: D401
         """压掉默认访问日志。"""
@@ -173,7 +204,7 @@ def idle_watchdog(idle_seconds):
         return
     while True:
         time.sleep(min(15, max(5, idle_seconds // 4)))
-        if _state["model"] is None:
+        if _state["model"] is None or _request_lock.locked():
             continue
         if time.time() - _state["last_active"] >= idle_seconds:
             log(f"闲置 {idle_seconds}s，退出以释放端口/显存")
@@ -184,15 +215,21 @@ def main(argv):
     """入口：解析参数 → 起服务。"""
     parser = argparse.ArgumentParser()
     parser.add_argument("--port", type=int, default=8081)
+    parser.add_argument("--host", default="127.0.0.1", help="监听地址，默认仅本机")
+    parser.add_argument("--api-key-env", default="SYNLOVE_ASR_API_KEY", help="Bearer 密钥的环境变量名")
     parser.add_argument("--model", default="small")
     parser.add_argument("--device", default="auto")
     parser.add_argument("--idle-seconds", type=int, default=180)
     args = parser.parse_args(argv)
+    Handler.token_env = args.api_key_env
+    if args.host not in ("127.0.0.1", "localhost", "::1") and not os.environ.get(args.api_key_env):
+        parser.error("非回环监听必须通过 --api-key-env 配置密钥")
 
     _state["model_name"] = args.model
     _state["requested_device"] = args.device
     threading.Thread(target=idle_watchdog, args=(args.idle_seconds,), daemon=True).start()
-    server = ThreadingHTTPServer(("127.0.0.1", args.port), Handler)
+    server = ThreadingHTTPServer((args.host, args.port), Handler)
+    server.timeout = 60
     log(f"whisper 服务启动：端口 {args.port} 模型 {args.model} device={args.device} 闲置退出 {args.idle_seconds}s")
     try:
         server.serve_forever()

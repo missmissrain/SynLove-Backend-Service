@@ -73,7 +73,10 @@ class FeatureReadiness:
                         raise RuntimeError("视频依赖缺失")
                 self.check_endpoint("asr", "/health", "asr")
             self.result = True
-        except Exception:
+        except Exception as error:
+            import sys
+            print(f"{self.name} readiness fail: {type(error).__name__}: {error}",
+                  file=sys.stderr, flush=True)
             self.result = False
         self.at = time.monotonic()
         return self.result

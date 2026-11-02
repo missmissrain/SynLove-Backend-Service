@@ -1,4 +1,6 @@
-# SynLove Backend Service
+# SynLove-Backend-Service
+
+发行版本：2026.11，配套 SynLove-Personal-Agent v2.0。该版本包含 Windows 家庭服务器侧的推理兼容实现、后台业务和出站节点；模型权重与部署参数由使用者单独准备。
 
 SynLove 的公共能力仓库，与 [SynLove-Personal-Agent](https://github.com/missmissrain/SynLove-Personal-Agent) 互为补集。两个仓库合在一起就是完整项目。
 
@@ -8,7 +10,7 @@ SynLove 的公共能力仓库，与 [SynLove-Personal-Agent](https://github.com/
 
 | 服务 | 默认端口 | 入口 | 用途 |
 | --- | --- | --- | --- |
-| TTS 语音合成 | 7862 | `synlove-tts/services/breezeTtsService.py` | 把文字合成 24kHz wav；按需加载，合成后释放显存 |
+| TTS 语音合成 | 7862 | `synlove-tts/services/breezeTtsService.py` | 24kHz wav；懒加载，可配置闲置退出 |
 | ASR 语音识别 | 8081 | `synlove-asr/services/whisperService.py` | faster-whisper 转写；懒加载，闲置自动退出 |
 | 本地 LLM | 8080 | `synlove-gemma/serve.py` | 用 llama.cpp 提供 OpenAI 兼容接口，带显存闸门 |
 | 爬虫中心 | 8792 | `businessRuntime/microServices/ServiceHost.py digest` | 统一新闻采集、去重、Gemma 摘要和每日计划；RSSHub 是内部依赖 |
@@ -22,7 +24,36 @@ TTS 和 ASR 的 `/health` 会返回统一身份字段：
 {"ok": true, "service": "tts", "protocol": 1, "loaded": false}
 ```
 
-`service` 必须是 `tts` 或 `asr`，`protocol` 当前为 `1`。SynLove 控制台用这组字段确认端口后面确实是自己的服务；普通 HTTP 服务或端口占用不会被误认成可用。端口没监听但本机依赖和模型齐备时，控制台会显示“按需待机”，第一次请求时再拉起。
+`service` 必须是 `tts` 或 `asr`，`protocol` 当前为 `1`。`loaded:false` 表示权重尚未加载，接口仍可接收请求。部署到远程时应保持 API 与守护器运行，不能用客户端本机依赖代替远端接口检查。
+
+## 低配置机器兼容
+
+| 项目 | 实现 | 使用条件 |
+| --- | --- | --- |
+| TTS 混合加载 | `--device <GiB数字>` 通过设备映射限制 GPU 权重预算，剩余部分放 CPU | 需要上游推理代码、accelerate 与足够系统内存 |
+| TTS INT8 | `--device int8 --int8-ckpt <文件> --int8-gpu-gb 3.6` 使用 ConvRot INT8 权重 | 需要匹配的量化 checkpoint；普通 BF16 权重不能直接替代 |
+| 较旧 NVIDIA 架构 | INT8 运行时使用 comfy-kitchen eager 后端，避免不支持的预编译 CUDA kernel | 速度依显卡和 torch 版本变化，不能保证所有显卡兼容 |
+| ASR CPU | `--device cpu --model small` 使用 faster-whisper CPU INT8 | 减少与 TTS / Gemma 的显存竞争 |
+| Gemma 量化 | llama.cpp + GGUF、可选视觉投影器，显存门控和空闲休眠 | 权重、投影器、上下文大小与 llama.cpp 构建须匹配 |
+| 视觉兼容代理 | `llmProxy.py` 将消息中的图片片段前置，其余内容和鉴权转发到回环上游 | 默认外部 API 8080、内部推理 8180 |
+| 后台运行 | RSSHub 强制生产模式；浏览器位置由 `PLAYWRIGHT_BROWSERS_PATH` 注入 | Windows 计划任务账户须有模型、浏览器和数据目录权限 |
+
+低显存通常以速度和系统内存换取可运行性。真实验收中 TTS 冷加载与合成可能耗时数分钟，请同时配置主程序、Hub、节点和模型请求超时。不要只延长 GUI 超时。
+
+建议推理使用独立 Python 3.12 环境；ASR/TTS 依赖见各子目录。INT8 的附加依赖见 `synlove-tts/requirementsInt8.txt`，既有环境可继续复用，无须重复安装。权重及第三方运行库遵循各自许可。
+
+## API 与默认端口
+
+| 服务 | 方法与路径 | 请求与返回 |
+| --- | --- | --- |
+| TTS · 7862 | `GET /health`；`POST /v1/audio/speech` | 合成请求含 model/input/voice/response_format；返回音频字节 |
+| ASR · 8081 | `GET /health`；`POST /v1/audio/transcriptions` | multipart file/model/language；返回 text 等转写字段 |
+| LLM · 8080 | `GET /v1/models`；`POST /v1/chat/completions` | OpenAI 兼容消息与可选流式输出 |
+| 内部 LLM · 8180 | llama.cpp 推理入口 | 仅回环监听，不直接公开 |
+| 业务 · 8791/8792/8793/8796 | `GET /health`；`POST /v1/rpc` | 统一 JSON-RPC 工具协议及持久任务处理；详见部署文档 |
+| 内部 RSSHub · 1200 | RSS 路由与 `/healthz` | 为爬虫中心提供订阅，通常无需公网开放 |
+
+非回环监听应设置对应 `SYNLOVE_*_API_KEY`；通过 HTTPS/WSS 和可信 CA 跨网络连接。模型 Hub 默认 9010，可在 VPS 上配置 TLS 或反向代理 443；FRP SSH 远控由独立仓库提供，不是本仓库的业务接口。
 
 ## 本机与远程
 
@@ -109,6 +140,16 @@ TTS 不带 `instruction` 时会把 `cfgScale` 设为 `1.0`。这是必须的：�
 密钥、模型权重、用户数据、日志和真实服务器地址不进入仓库。`deploy/services.example.env` 只是占位模板，复制后填写，不要提交真实值。
 
 ## 最近更新
+
+### 2026.11 · 2026-11-03 · 配套主程序 v2.0
+
+- 纳入服务器侧 TTS 混合加载、INT8 ConvRot、较旧 GPU eager 兼容与空闲退出实现。
+- 纳入 ASR CPU INT8/CUDA 降级、Gemma 视觉代理、鉴权和进程监督实现。
+- 保留服务器侧业务就绪检查，RSSHub 生产运行设置；浏览器路径改为部署环境注入。
+- 补充默认端口、API、量化前提、超时边界和依赖说明。
+- 来源为家庭服务器代码快照，未用个人电脑上的旧后台副本覆盖优化实现。
+
+以下为历史更新，继续保留以便查询版本演进。
 
 ### 后台功能拆分版
 

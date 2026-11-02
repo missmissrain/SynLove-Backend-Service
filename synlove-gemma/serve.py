@@ -93,12 +93,18 @@ def port_open(port):
 
 
 def build_args(binary, args):
-    """拼 llama-server 命令行。"""
+    """拼 llama-server 命令行。
+
+    安全模型：llama-server 只绑定 127.0.0.1:<internal-port>，对外端口由
+    llmProxy.py 修正代理承担（重排多模态内容 + 转发）。
+    --api-key-env：远程部署时读取指定环境变量作为 llama-server Bearer 密钥；
+    未配置或对外仅回环时不带 --api-key（保持旧行为）。
+    """
     cmd = [
         binary,
         "-m", str(args.model),
         "--host", "127.0.0.1",
-        "--port", str(args.port),
+        "--port", str(args.internal_port),
         "-c", str(args.ctx),
         "-ngl", str(args.ngl),
         "--jinja",
@@ -107,9 +113,34 @@ def build_args(binary, args):
         "--parallel", str(args.parallel),
         "--sleep-idle-seconds", str(args.sleep_idle),
     ]
+    api_key = os.environ.get(args.api_key_env, "") if args.api_key_env else ""
+    if args.host not in ("127.0.0.1", "localhost", "::1"):
+        if not api_key:
+            raise SystemExit(f"非回环监听必须通过 --api-key-env 指定的环境变量提供密钥（{args.api_key_env}）")
+        cmd += ["--api-key", api_key]
     if args.mmproj and Path(args.mmproj).is_file():
         cmd += ["--mmproj", str(args.mmproj)]
     return cmd
+
+
+def resolve_weight_path(raw: str) -> str:
+    """把权重路径解析为绝对路径。
+
+    服务可能以仓库根或 gemma/ 为工作目录启动：绝对路径原样返回；
+    相对路径先按仓库根解析（存在即用），再按 gemma/ 解析（兼容
+    serviceInstall.json 的 gemma/model/... 写法与下载脚本的 model/... 写法）。
+    """
+    path = Path(raw)
+    if path.is_absolute():
+        return str(path)
+    if path.is_file():
+        return str(path.resolve())
+    repo_root = Path(__file__).resolve().parent.parent
+    for base in (repo_root, repo_root / "gemma"):
+        candidate = base / raw
+        if candidate.is_file():
+            return str(candidate)
+    return str(path)  # 保持原样，让下游报权重不存在的明确错误
 
 
 def main(argv=None):
@@ -118,7 +149,13 @@ def main(argv=None):
     parser.add_argument("--bin", default=None, help="llama-server 路径")
     parser.add_argument("--model", required=True, help="GGUF 权重路径")
     parser.add_argument("--mmproj", default=None, help="视觉投影器路径")
-    parser.add_argument("--port", type=int, default=DEFAULT_PORT)
+    parser.add_argument("--port", type=int, default=DEFAULT_PORT,
+                        help="对外监听端口（由 llmProxy 承担）")
+    parser.add_argument("--internal-port", type=int, default=None,
+                        help="llama-server 回环端口；默认 = 对外端口 + 100")
+    parser.add_argument("--host", default="127.0.0.1", help="对外监听地址；远程部署时用 0.0.0.0 并配 --api-key-env")
+    parser.add_argument("--api-key-env", default="SYNLOVE_LLM_API_KEY",
+                        help="llama-server Bearer 密钥的环境变量名（非回环监听时必填）")
     parser.add_argument("--ctx", type=int, default=DEFAULT_CTX)
     parser.add_argument("--ngl", type=int, default=DEFAULT_NGL)
     parser.add_argument("--alias", default=DEFAULT_ALIAS)
@@ -128,6 +165,11 @@ def main(argv=None):
     parser.add_argument("--wait-seconds", type=int, default=DEFAULT_WAIT)
     parser.add_argument("--dry-run", action="store_true", help="只打印命令")
     args = parser.parse_args(argv)
+    args.model = resolve_weight_path(args.model)
+    if args.mmproj:
+        args.mmproj = resolve_weight_path(args.mmproj)
+    if args.internal_port is None:
+        args.internal_port = args.port + 100
 
     if not Path(args.model).is_file():
         raise SystemExit(f"权重不存在：{args.model}（先跑 downloadGemmaModel.py）")
@@ -146,21 +188,52 @@ def main(argv=None):
         return 2
 
     LOG.parent.mkdir(parents=True, exist_ok=True)
-    flags = 0x08000000 | 0x00000008  # CREATE_NO_WINDOW | DETACHED_PROCESS
-    log("启动：" + " ".join(cmd[:8]) + " …")
+    # CREATE_NO_WINDOW：不弹控制台窗口；不用 DETACHED_PROCESS（分离模式下
+    # 模型加载阶段可能静默退出）。子进程随本进程存活，由启动方统一守护。
+    flags = 0x08000000
+    log("启动 llama-server（回环）：" + " ".join(cmd[:8]) + " …")
     with LOG.open("a", encoding="utf-8") as handle:
         process = subprocess.Popen(cmd, cwd=str(ROOT), stdout=handle, stderr=handle,
                                    creationflags=flags)
-    deadline = time.time() + 180
+
+    # 修正代理：对外端口上提供重排后的多模态 Chat Completions
+    proxy_cmd = [sys.executable, str(ROOT / "llmProxy.py"),
+                 "--listen-host", args.host,
+                 "--listen-port", str(args.port),
+                 "--upstream", f"127.0.0.1:{args.internal_port}"]
+    log("启动 llmProxy：" + " ".join(proxy_cmd[1:]))
+    with LOG.open("a", encoding="utf-8") as handle:
+        proxy = subprocess.Popen(proxy_cmd, cwd=str(ROOT), stdout=handle, stderr=handle,
+                                 creationflags=flags)
+
+    deadline = time.time() + 300
     while time.time() < deadline:
-        if port_open(args.port):
-            log(f"就绪：http://127.0.0.1:{args.port}/v1（pid {process.pid}，日志 {LOG}）")
-            return 0
         if process.poll() is not None:
-            log(f"进程退出（code {process.returncode}），看日志 {LOG}")
+            proxy.terminate()
+            log(f"llama-server 退出（code {process.returncode}），看日志 {LOG}")
             return 1
+        if proxy.poll() is not None:
+            process.terminate()
+            log(f"llmProxy 退出（code {proxy.returncode}），看日志 {LOG}")
+            return 1
+        if port_open(args.internal_port) and port_open(args.port):
+            log(f"就绪：http://{'127.0.0.1' if args.host == '127.0.0.1' else args.host}:{args.port}/v1"
+                f"（llama-server pid {process.pid} @ 127.0.0.1:{args.internal_port}，"
+                f"代理 pid {proxy.pid}，日志 {LOG}）")
+            # 常驻监督：任一子进程退出即结束另一个，交由包装器整体重启。
+            try:
+                code = process.wait()
+                proxy.terminate()
+                log(f"llama-server 退出（code {code}），看日志 {LOG}")
+                return code
+            except KeyboardInterrupt:
+                process.terminate()
+                proxy.terminate()
+                return 0
         time.sleep(1)
-    log(f"180 秒内没就绪，看日志 {LOG}")
+    log("300 秒内没就绪，看日志 " + str(LOG))
+    process.terminate()
+    proxy.terminate()
     return 1
 
 
