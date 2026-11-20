@@ -1,6 +1,6 @@
 # SynLove-Backend-Service
 
-发行版本：2026.11，配套 SynLove-Personal-Agent v2.0。该版本包含 Windows 家庭服务器侧的推理兼容实现、后台业务和出站节点；模型权重与部署参数由使用者单独准备。
+发行版本：2026.11，配套 SynLove-Personal-Agent v2.1。该版本包含 Windows 家庭服务器侧的推理兼容实现、后台业务和出站节点；模型权重与部署参数由使用者单独准备。
 
 SynLove 的公共能力仓库，与 [SynLove-Personal-Agent](https://github.com/missmissrain/SynLove-Personal-Agent) 互为补集。两个仓库合在一起就是完整项目。
 
