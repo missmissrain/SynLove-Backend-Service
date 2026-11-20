@@ -22,3 +22,8 @@ businessRuntime/videoDigest/config/videoDigest.json
 relayNode/config/node.json
 **/privateMigration/
 **/*.beforeMigration.json
+
+# ModelHub 私有密钥与运行数据
+config/modelHubSecrets.json
+config/modelHub.server.json
+runtime/
