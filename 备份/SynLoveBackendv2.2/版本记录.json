@@ -1,0 +1,9 @@
+﻿{
+    "time":  "2026-11-03T23:43:02.1074007+08:00",
+    "files":  [
+                  "CrawlerAdapter.py",
+                  "WebCollection.py"
+              ],
+    "purpose":  "爬虫TLS/DNS错误透传前备份",
+    "version":  "2.2"
+}

@@ -1,0 +1,64 @@
+{
+  "version": 1,
+  "description": "按模型实际推理设备登记；CPU 卸载仍可能使用 GPU，需提供安全卸载接口。",
+  "models": [
+    {
+      "name": "llm",
+      "displayName": "Gemma 本地大模型",
+      "enabled": true,
+      "gpuManaged": true,
+      "port": 8080,
+      "tokenEnv": "SYNLOVE_LLM_API_KEY",
+      "unloadPath": "/internal/gpu/unload",
+      "releasePriority": 10,
+      "memoryPolicy": "on_demand",
+      "resourceManaged": true
+    },
+    {
+      "name": "tts",
+      "displayName": "Breeze TTS",
+      "enabled": true,
+      "gpuManaged": true,
+      "port": 7862,
+      "tokenEnv": "SYNLOVE_TTS_API_KEY",
+      "unloadPath": "/internal/gpu/unload",
+      "releasePriority": 20,
+      "memoryPolicy": "on_demand",
+      "resourceManaged": true
+    },
+    {
+      "name": "audio-generation",
+      "displayName": "ACE-Step 音频生成",
+      "enabled": true,
+      "gpuManaged": true,
+      "port": 18777,
+      "releasePriority": 30,
+      "memoryPolicy": "cuda_int8+cpu_offload",
+      "unloadPath": "/internal/gpu/unload",
+      "resourceManaged": true
+    },
+    {
+      "name": "asr",
+      "displayName": "Whisper ASR",
+      "enabled": true,
+      "gpuManaged": false,
+      "port": 8081,
+      "releasePriority": 40,
+      "memoryPolicy": "cpu",
+      "resourceManaged": true,
+      "tokenEnv": "SYNLOVE_ASR_API_KEY",
+      "unloadPath": "/internal/gpu/unload"
+    },
+    {
+      "name": "audio-effects",
+      "displayName": "音频音效模型",
+      "enabled": true,
+      "gpuManaged": true,
+      "port": 18765,
+      "releasePriority": 50,
+      "memoryPolicy": "cpu_text_encoder+vulkan_diffusion",
+      "unloadPath": "/internal/gpu/unload",
+      "resourceManaged": true
+    }
+  ]
+}

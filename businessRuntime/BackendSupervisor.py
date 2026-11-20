@@ -28,7 +28,12 @@ class BackendSupervisor:
         self.children = {}
         self.logs = []
         self.env = {**os.environ, "SYNLOVE_SERVICE_CONFIG": str(self.registry.path.resolve()),
-                    "PYTHONUTF8": "1", "PYTHONIOENCODING": "utf-8"}
+                    "PYTHONUTF8": "1", "PYTHONIOENCODING": "utf-8",
+                    # RSSHub 生产构建运行时必须 NODE_ENV=production，否则走 dev 注册表崩溃
+                    "NODE_ENV": "production"}
+        # 浏览器安装位置由部署环境指定；不绑定某台机器的用户目录。
+        if os.environ.get("PLAYWRIGHT_BROWSERS_PATH"):
+            self.env["PLAYWRIGHT_BROWSERS_PATH"] = os.environ["PLAYWRIGHT_BROWSERS_PATH"]
 
     def commands(self):
         """无参数；只允许固定四项业务、可选RSSHub和可选出站节点，不加载个人实例。"""

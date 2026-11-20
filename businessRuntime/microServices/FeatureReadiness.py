@@ -8,6 +8,7 @@ import threading
 from urllib.parse import urlsplit, urlunsplit
 from pathlib import Path
 from microServices.ServiceTransport import ServiceTransport
+from microServices.BrowserRuntime import BrowserRuntime
 
 
 class FeatureReadiness:
@@ -38,7 +39,7 @@ class FeatureReadiness:
         """无参数；实际建立无页面网络的浏览器会话，并执行小型协议请求。"""
         from playwright.sync_api import sync_playwright
         with sync_playwright() as driver:
-            browser = driver.chromium.launch(headless=True)
+            browser = BrowserRuntime.launch_browser(driver)
             try:
                 if browser.new_page().evaluate("1+1") != 2:
                     raise RuntimeError("浏览器协议失败")
@@ -73,7 +74,10 @@ class FeatureReadiness:
                         raise RuntimeError("视频依赖缺失")
                 self.check_endpoint("asr", "/health", "asr")
             self.result = True
-        except Exception:
+        except Exception as error:
+            import sys
+            print(f"{self.name} readiness fail: {type(error).__name__}: {error}",
+                  file=sys.stderr, flush=True)
             self.result = False
         self.at = time.monotonic()
         return self.result

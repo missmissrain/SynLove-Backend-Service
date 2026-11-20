@@ -1,0 +1,8 @@
+{
+  "fastBackbone": false,
+  "fp32Attention": true,
+  "attentionDevice": "cuda",
+  "cudaLaunchBlocking": true,
+  "diagnosticFolder": "runtime/diagnostics",
+  "description": "稳定性模式：保留GPU和CPU混合加载，关闭可回退的CUDA Graph加速；不修改声音引导。"
+}

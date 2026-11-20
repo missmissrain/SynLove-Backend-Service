@@ -1,0 +1,5 @@
+# INT8 / CPU-GPU 混合加载附加依赖；先按 README 准备上游推理环境和匹配权重。
+# 既有可用环境无需重装；版本须与 checkpoint、显卡和 torch 构建一并验证。
+accelerate>=1.0
+safetensors>=0.4
+comfy-kitchen

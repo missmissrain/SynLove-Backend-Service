@@ -1,0 +1,18 @@
+{
+  "version": "1.0",
+  "time": "2026-11-05 21:29:01",
+  "saved": [
+    "synlove-gemma/serve.py",
+    "synlove-gemma/llmProxy.py",
+    "synlove-tts/services/breezeTtsService.py"
+  ],
+  "created": [
+    "config/gpuResidency.json",
+    "tests/GpuResidencyTests.py",
+    "docs/GpuResidency.md",
+    "gpuRuntime/__init__.py",
+    "gpuRuntime/GpuCoordinator.py",
+    "gpuRuntime/LlmRuntime.py",
+    "gpuRuntime/TtsResidency.py"
+  ]
+}

@@ -2,6 +2,7 @@
 
 from pathlib import Path
 from microServices.CrawlerAdapter import CrawlerAdapter
+from microServices.BrowserRuntime import BrowserRuntime
 
 
 class WebCollection:
@@ -34,8 +35,9 @@ class WebCollection:
         fetcher = CrawlerAdapter(self.root)
         fetcher.validate_url(url)
         count, size = [0], [0]
+        failures = []
         with sync_playwright() as driver:
-            browser = driver.chromium.launch(headless=True, args=[
+            browser = BrowserRuntime.launch_browser(driver, args=[
                 "--disable-quic", "--force-webrtc-ip-handling-policy=disable_non_proxied_udp"])
             try:
                 page = browser.new_page(service_workers="block", accept_downloads=False)
@@ -54,11 +56,18 @@ class WebCollection:
                         if size[0] > 8 * 1024 * 1024:
                             return route.abort()
                         route.fulfill(status=200, content_type=mime + "; charset=utf-8", body=text)
-                    except Exception:
+                    except Exception as error:
+                        if req.is_navigation_request() and req.frame == page.main_frame and not failures:
+                            failures.append(error)
                         route.abort()
 
                 page.route("**/*", route_request)
-                page.goto(url, timeout=60000, wait_until="domcontentloaded")
+                try:
+                    page.goto(url, timeout=60000, wait_until="domcontentloaded")
+                except Exception:
+                    if failures:
+                        raise failures[0]
+                    raise
                 page.wait_for_timeout(1500)
                 title = page.title()
                 text = page.locator("body").inner_text(timeout=10000)[:24000]

@@ -1,0 +1,83 @@
+{
+  "version": 1,
+  "说明": "SynLove 后台模型和业务 API 清单；不包含任何密钥、IP 或用户数据。",
+  "models": [
+    {
+      "name": "llm-gemma",
+      "displayName": "Gemma 本地大模型",
+      "status": "available",
+      "port": 8080,
+      "baseUrl": "http://127.0.0.1:8080",
+      "protocol": "OpenAI-compatible",
+      "authEnv": "SYNLOVE_LLM_API_KEY",
+      "routes": ["/health", "/v1/models", "/v1/chat/completions", "/v1/completions", "/v1/embeddings", "/internal/gpu/status", "/internal/gpu/unload"],
+      "notes": "图片消息支持 image_url；服务 API 常驻，模型按首个生成请求懒加载。"
+    },
+    {
+      "name": "tts-breeze",
+      "displayName": "Breeze TTS",
+      "status": "available",
+      "port": 7862,
+      "baseUrl": "http://127.0.0.1:7862",
+      "protocol": "OpenAI-audio-compatible",
+      "authEnv": "SYNLOVE_TTS_API_KEY",
+      "routes": ["/health", "/v1/audio/speech", "/audio/speech", "/speak", "/internal/gpu/unload"],
+      "notes": "支持 instruction 音色提示、refAudioBase64 声音克隆、refText、seed 和 wav 输出。"
+    },
+    {
+      "name": "asr-whisper",
+      "displayName": "faster-whisper ASR",
+      "status": "available",
+      "port": 8081,
+      "baseUrl": "http://127.0.0.1:8081",
+      "protocol": "OpenAI-transcription-compatible",
+      "authEnv": "SYNLOVE_ASR_API_KEY",
+      "routes": ["/health", "/v1/audio/transcriptions", "/audio/transcriptions", "/transcribe", "/unload"],
+      "notes": "multipart/form-data 上传一个 file；模型首次请求懒加载，GPU 不足自动退 CPU INT8。"
+    },
+    {
+      "name": "audio-ace-step",
+      "displayName": "ACE-Step 音乐生成",
+      "status": "available",
+      "port": 18777,
+      "baseUrl": "http://127.0.0.1:18777",
+      "protocol": "SynLove-task-api",
+      "authEnv": "",
+      "routes": ["/health", "/info", "/v1/audio/music", "/v1/audio/music/{taskId}"],
+      "notes": "异步任务：POST 创建任务，GET 查询结果；当前生产参数为 CPU/offload。"
+    },
+    {
+      "name": "audio-moss",
+      "displayName": "MOSS 音效生成",
+      "status": "configured-not-running",
+      "port": 18765,
+      "baseUrl": "http://127.0.0.1:18765",
+      "protocol": "SynLove-wav-api",
+      "authEnv": "",
+      "routes": ["/health", "/info", "/v1/audio/speech", "/v1/sound-effects", "/sfx"],
+      "notes": "JSON 提交 prompt/input，直接返回 48kHz 单声道 WAV；当前服务串行保护显存。"
+    },
+    {
+      "name": "llm-saluki",
+      "displayName": "Saluki 27B GGUF",
+      "status": "weights-only",
+      "port": 8082,
+      "baseUrl": "http://127.0.0.1:8082",
+      "protocol": "OpenAI-compatible-if-started",
+      "authEnv": "SYNLOVE_SALUKI_API_KEY",
+      "routes": ["/v1/models", "/v1/chat/completions"],
+      "notes": "已发现权重但没有生产启动实例；GTX 1060 6GB 不应默认启动 27B。"
+    },
+    {
+      "name": "embedding-qwen3",
+      "displayName": "Qwen3 Embedding 0.6B",
+      "status": "embedded-only",
+      "port": 8083,
+      "baseUrl": "http://127.0.0.1:8083",
+      "protocol": "Embedding-compatible-if-started",
+      "authEnv": "SYNLOVE_EMBEDDING_API_KEY",
+      "routes": ["/v1/embeddings"],
+      "notes": "权重由 ACE-Step 目录提供，目前没有独立生产服务；不能把文件存在误报为 API 在线。"
+    }
+  ]
+}

@@ -2,9 +2,9 @@
 
 职责：
 - 找 llama-server（显式参数 > 环境变量 > PATH）；
-- 启动前检查空闲显存，不够就等（默认要 5200MB），避免和别的 GPU 任务互相拖死；
+- API先常驻，请求到来时检查显存并按需加载；显存不足则请求空闲TTS卸载；
 - 以 OpenAI 兼容接口方式跑在 127.0.0.1:<port>/v1，带视觉投影器（--mmproj）；
-- 等到端口可连才返回，日志单独落文件。
+- 推理期间持有共享GPU锁，结束后保温600秒，到期只停止模型子进程。
 
 注册参数（命令行，默认值见 DEFAULT_* 常量）：
     --bin            llama-server 可执行文件（默认按 PATH 找，或环境变量 LLAMA_SERVER_BIN）
@@ -93,23 +93,54 @@ def port_open(port):
 
 
 def build_args(binary, args):
-    """拼 llama-server 命令行。"""
+    """拼 llama-server 命令行。
+
+    安全模型：llama-server 只绑定 127.0.0.1:<internal-port>，对外端口由
+    llmProxy.py 修正代理承担（重排多模态内容 + 转发）。
+    --api-key-env：远程部署时读取指定环境变量作为 llama-server Bearer 密钥；
+    未配置或对外仅回环时不带 --api-key（保持旧行为）。
+    """
     cmd = [
         binary,
         "-m", str(args.model),
         "--host", "127.0.0.1",
-        "--port", str(args.port),
+        "--port", str(args.internal_port),
         "-c", str(args.ctx),
         "-ngl", str(args.ngl),
         "--jinja",
         "--reasoning", "off",              # 本地模型带隐藏推理会把 max_tokens 吃光
         "--alias", args.alias,
         "--parallel", str(args.parallel),
-        "--sleep-idle-seconds", str(args.sleep_idle),
+        "--sleep-idle-seconds", "-1",  # 驻留统一管理，当前llama以-1禁用内部计时。
     ]
+    api_key = os.environ.get(args.api_key_env, "") if args.api_key_env else ""
+    if args.host not in ("127.0.0.1", "localhost", "::1"):
+        if not api_key:
+            raise SystemExit(f"非回环监听必须通过 --api-key-env 指定的环境变量提供密钥（{args.api_key_env}）")
+        cmd += ["--api-key", api_key]
     if args.mmproj and Path(args.mmproj).is_file():
         cmd += ["--mmproj", str(args.mmproj)]
     return cmd
+
+
+def resolve_weight_path(raw: str) -> str:
+    """把权重路径解析为绝对路径。
+
+    服务可能以仓库根或 gemma/ 为工作目录启动：绝对路径原样返回；
+    相对路径先按仓库根解析（存在即用），再按 gemma/ 解析（兼容
+    serviceInstall.json 的 gemma/model/... 写法与下载脚本的 model/... 写法）。
+    """
+    path = Path(raw)
+    if path.is_absolute():
+        return str(path)
+    if path.is_file():
+        return str(path.resolve())
+    repo_root = Path(__file__).resolve().parent.parent
+    for base in (repo_root, repo_root / "gemma"):
+        candidate = base / raw
+        if candidate.is_file():
+            return str(candidate)
+    return str(path)  # 保持原样，让下游报权重不存在的明确错误
 
 
 def main(argv=None):
@@ -118,16 +149,27 @@ def main(argv=None):
     parser.add_argument("--bin", default=None, help="llama-server 路径")
     parser.add_argument("--model", required=True, help="GGUF 权重路径")
     parser.add_argument("--mmproj", default=None, help="视觉投影器路径")
-    parser.add_argument("--port", type=int, default=DEFAULT_PORT)
+    parser.add_argument("--port", type=int, default=DEFAULT_PORT,
+                        help="对外监听端口（由 llmProxy 承担）")
+    parser.add_argument("--internal-port", type=int, default=None,
+                        help="llama-server 回环端口；默认 = 对外端口 + 100")
+    parser.add_argument("--host", default="127.0.0.1", help="对外监听地址；远程部署时用 0.0.0.0 并配 --api-key-env")
+    parser.add_argument("--api-key-env", default="SYNLOVE_LLM_API_KEY",
+                        help="llama-server Bearer 密钥的环境变量名（非回环监听时必填）")
     parser.add_argument("--ctx", type=int, default=DEFAULT_CTX)
     parser.add_argument("--ngl", type=int, default=DEFAULT_NGL)
     parser.add_argument("--alias", default=DEFAULT_ALIAS)
     parser.add_argument("--parallel", type=int, default=1)
-    parser.add_argument("--sleep-idle", type=int, default=120, help="空闲多少秒后卸显存（0=不卸）")
+    parser.add_argument("--sleep-idle", type=int, default=600, help="兼容旧启动参数；驻留策略统一由config/gpuResidency.json控制，默认600秒")
     parser.add_argument("--min-free-vram", type=int, default=DEFAULT_MIN_VRAM)
     parser.add_argument("--wait-seconds", type=int, default=DEFAULT_WAIT)
     parser.add_argument("--dry-run", action="store_true", help="只打印命令")
     args = parser.parse_args(argv)
+    args.model = resolve_weight_path(args.model)
+    if args.mmproj:
+        args.mmproj = resolve_weight_path(args.mmproj)
+    if args.internal_port is None:
+        args.internal_port = args.port + 100
 
     if not Path(args.model).is_file():
         raise SystemExit(f"权重不存在：{args.model}（先跑 downloadGemmaModel.py）")
@@ -141,27 +183,34 @@ def main(argv=None):
         print(" ".join(cmd))
         return 0
 
-    if not wait_for_vram(args.min_free_vram, args.wait_seconds):
-        log("显存一直不够，放弃启动（稍后重试即可）")
-        return 2
+    # API先常驻；模型只在生成请求中加载，避免守护把正常卸载误判为服务故障。
+    sys.path.insert(0, str(ROOT.parent))
+    from gpuRuntime.GpuCoordinator import GpuCoordinator
+    from gpuRuntime.LlmRuntime import LlmRuntime
+    from llmProxy import ProxyHandler
+    from gpuRuntime.CloudFallback import CloudFallback
+    from http.server import ThreadingHTTPServer
 
-    LOG.parent.mkdir(parents=True, exist_ok=True)
-    flags = 0x08000000 | 0x00000008  # CREATE_NO_WINDOW | DETACHED_PROCESS
-    log("启动：" + " ".join(cmd[:8]) + " …")
-    with LOG.open("a", encoding="utf-8") as handle:
-        process = subprocess.Popen(cmd, cwd=str(ROOT), stdout=handle, stderr=handle,
-                                   creationflags=flags)
-    deadline = time.time() + 180
-    while time.time() < deadline:
-        if port_open(args.port):
-            log(f"就绪：http://127.0.0.1:{args.port}/v1（pid {process.pid}，日志 {LOG}）")
-            return 0
-        if process.poll() is not None:
-            log(f"进程退出（code {process.returncode}），看日志 {LOG}")
-            return 1
-        time.sleep(1)
-    log(f"180 秒内没就绪，看日志 {LOG}")
-    return 1
+    coordinator = GpuCoordinator(ROOT.parent, "llm")
+    args.sleep_idle = -1  # 当前llama用-1禁用内部休眠；0是无效值。
+    cmd = build_args(binary, args)
+    runtime = LlmRuntime(cmd, ROOT, LOG, args.internal_port, coordinator, args.min_free_vram)
+    ProxyHandler.runtime = runtime
+    ProxyHandler.fallback = CloudFallback(ROOT.parent)
+    ProxyHandler.token_env = args.api_key_env
+    ProxyHandler.model_alias = args.alias
+    ProxyHandler.upstream = f"http://127.0.0.1:{args.internal_port}"
+    server = ThreadingHTTPServer((args.host, args.port), ProxyHandler)
+    server.daemon_threads = True
+    log(f"LLM API就绪，模型按需加载，空闲{coordinator.idle_seconds}秒软卸载")
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        pass
+    finally:
+        server.server_close()
+        runtime.close_runtime()
+    return 0
 
 
 if __name__ == "__main__":

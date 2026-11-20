@@ -3,6 +3,7 @@
 import ipaddress
 import http.client
 import socket
+import ssl
 from urllib.parse import urlsplit
 
 
@@ -76,9 +77,23 @@ class CrawlerAdapter:
         mode = args.get("mode", "browser")
         if mode not in ("http", "browser"):
             raise ValueError("mode只允许http或browser")
-        if mode == "browser":
-            from microServices.WebCollection import WebCollection
-            text = WebCollection(self.root).collect(str(args.get("url", "")), args.get("summarize", True))
-        else:
-            text = self.fetch_http(str(args.get("url", "")))
+        try:
+            if mode == "browser":
+                from microServices.WebCollection import WebCollection
+                text = WebCollection(self.root).collect(str(args.get("url", "")), args.get("summarize", True))
+            else:
+                text = self.fetch_http(str(args.get("url", "")))
+        except (ValueError, OSError) as error:
+            if isinstance(error, ssl.SSLCertVerificationError):
+                detail = "目标站点TLS证书链未通过服务器校验，请检查站点证书或服务器可信证书配置；没有关闭证书校验"
+            elif isinstance(error, TimeoutError):
+                detail = "访问目标站点超时"
+            elif isinstance(error, socket.gaierror):
+                detail = "目标站点DNS解析失败"
+            elif isinstance(error, ValueError):
+                detail = str(error)
+            else:
+                detail = "访问目标站点失败（" + type(error).__name__ + "）"
+            return {"jsonrpc": "2.0", "id": key, "result": {
+                "isError": True, "content": [{"type": "text", "text": "网页抓取失败：" + detail}]}}
         return {"jsonrpc": "2.0", "id": key, "result": {"content": [{"type": "text", "text": text}]}}
