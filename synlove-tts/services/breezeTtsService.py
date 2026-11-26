@@ -198,7 +198,8 @@ def load_engine_int8(bf16_ckpt, int8_ckpt, gpu_gb, depth_fp32=False):
     started = time.time()
     args_depth_fp32 = bool(depth_fp32)
     # 显存闸门：模型 GPU 部分 + codec 0.65GB + 激活裕量
-    need_mb = int(gpu_gb * 1024 + _state.get("int8_margin_mb", 600))
+    need_mb = int(gpu_gb * 1024 + int(
+        os.environ.get("BREEZE_INT8_MARGIN_MB") or _state.get("int8_margin_mb", 600)))
     deadline = time.time() + WAIT_VRAM_SECONDS
     while True:
         free = free_vram_mb()

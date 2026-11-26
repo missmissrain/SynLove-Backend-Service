@@ -172,6 +172,15 @@ export function make_tts_handler(cfg: worker_config, log: logger): capability_ha
     const payload = openai_mode
       ? { model: cfg.model || 'tts-1', input: text, voice, response_format: format, speed: input.speed }
       : { text, voice, format, speed: input.speed };
+    // 参数input来自中转任务；白名单透传声音描述及克隆参考，不转发任意请求字段。
+    for (const key of ['instruction', 'refAudioBase64', 'refText']) {
+      if (typeof input[key] === 'string') Object.assign(payload, { [key]: input[key] });
+    }
+    for (const key of ['cfgScale', 'seed', 'maxChars']) {
+      if (typeof input[key] === 'number' && Number.isFinite(input[key])) {
+        Object.assign(payload, { [key]: input[key] });
+      }
+    }
 
     let response: Response;
     try {

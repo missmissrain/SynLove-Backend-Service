@@ -4,6 +4,9 @@ import json
 import sys
 from pathlib import Path
 
+# stdio入口可以从任意工作目录启动，不依赖调用方额外配置PYTHONPATH。
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
 from microServices.ServiceManager import ServiceManager
 from microServices.ServiceTransport import ServiceTransport
 

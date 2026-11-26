@@ -1,0 +1,57 @@
+{
+  "version": 1,
+  "description": "服务器所有可能占用显存的模型登记表。gpuManaged=false表示当前明确以CPU或CPU卸载运行，不参与显存抢占。",
+  "models": [
+    {
+      "name": "llm",
+      "displayName": "Gemma 本地大模型",
+      "enabled": true,
+      "gpuManaged": true,
+      "port": 8080,
+      "tokenEnv": "SYNLOVE_LLM_API_KEY",
+      "unloadPath": "/internal/gpu/unload",
+      "releasePriority": 10,
+      "memoryPolicy": "on_demand"
+    },
+    {
+      "name": "tts",
+      "displayName": "Breeze TTS",
+      "enabled": true,
+      "gpuManaged": true,
+      "port": 7862,
+      "tokenEnv": "SYNLOVE_TTS_API_KEY",
+      "unloadPath": "/internal/gpu/unload",
+      "releasePriority": 20,
+      "memoryPolicy": "on_demand"
+    },
+    {
+      "name": "audio-generation",
+      "displayName": "ACE-Step 音频生成",
+      "enabled": true,
+      "gpuManaged": false,
+      "port": 18777,
+      "releasePriority": 30,
+      "memoryPolicy": "cpu_offload",
+      "note": "当前生产参数为 --device cpu --offload_to_cpu true，未纳入GPU抢占。改为GPU后必须补充统一卸载接口。"
+    },
+    {
+      "name": "asr",
+      "displayName": "Whisper ASR",
+      "enabled": true,
+      "gpuManaged": false,
+      "port": 8081,
+      "releasePriority": 40,
+      "memoryPolicy": "cpu"
+    },
+    {
+      "name": "audio-effects",
+      "displayName": "音频音效模型",
+      "enabled": false,
+      "gpuManaged": true,
+      "port": 0,
+      "releasePriority": 50,
+      "memoryPolicy": "unregistered",
+      "note": "尚未发现生产进程和端口；接入时必须登记显存预算及卸载路由。"
+    }
+  ]
+}

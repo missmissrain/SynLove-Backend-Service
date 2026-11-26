@@ -1,6 +1,14 @@
 # SynLove-Backend-Service
 
-发行版本：2026.11，配套 SynLove-Personal-Agent v2.1。该版本包含 Windows 家庭服务器侧的推理兼容实现、后台业务和出站节点；模型权重与部署参数由使用者单独准备。
+发行版本：**v3.0**（2026-11-26），配套 SynLove-Personal-Agent v3.0。该版本包含 Windows 家庭服务器侧的推理兼容实现、后台业务和出站节点；模型权重与部署参数由使用者单独准备。
+
+## v3.0 更新内容
+
+- `businessRuntime/microServices/ServiceMcpBridge.py` 统一微服务 MCP 注册，服务版本升到 2.0.0，多服务共用同一套工具暴露与错误结构。
+- `relayNode` 升到 2.0.0：修正本地节点客户端的连接与重连处理，出站节点与 Hub 的心跳时序对齐。
+- `synlove-tts` 的 Breeze 合成服务修正请求参数与失败回退。
+- 新增 `config_gpuModels.server.json`：把服务器侧 GPU 模型清单与本地实例配置分离，便于同一套代码部署到家服与个人机。
+- 新增 `deploy/RepairRsshubHeaders.py`：修复 RSSHub 抓取时的请求头问题。
 
 SynLove 的公共能力仓库，与 [SynLove-Personal-Agent](https://github.com/missmissrain/SynLove-Personal-Agent) 互为补集。两个仓库合在一起就是完整项目。
 
