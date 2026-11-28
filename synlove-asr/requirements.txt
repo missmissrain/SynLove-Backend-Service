@@ -1,0 +1,2 @@
+faster-whisper>=1.0
+# 想用 CUDA 再装：pip install torch --index-url https://download.pytorch.org/whl/cu121

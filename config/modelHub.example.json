@@ -1,0 +1,22 @@
+{
+  "version": 1,
+  "service": {
+    "host": "127.0.0.1",
+    "port": 8810,
+    "protocol": 1,
+    "keepAliveSeconds": 600,
+    "defaultLeaseSeconds": 1800,
+    "说明": "ModelHub 只监听回环地址；密钥放 config/modelHubSecrets.json，不入库。"
+  },
+  "cloud": {
+    "enabled": true,
+    "timeoutSeconds": 900,
+    "usageRetentionDays": 30,
+    "providers": {
+      "dahuangf": {"baseURL": "https://your-provider.example.com/v1", "api": "responses"},
+      "qwen": {"baseURL": "https://your-provider.example.com/compatible-mode/v1", "api": "chat"},
+      "workbuddy": {"baseURL": "http://127.0.0.1:3425/v1", "api": "chat"}
+    }
+  },
+  "models": []
+}

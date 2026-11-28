@@ -1,0 +1,242 @@
+﻿"""
+语音转写服务（faster-whisper，本地 HTTP）。
+
+职责：
+- 首次请求时**懒加载**模型（默认 small；显存不足自动退 CPU int8），之后复用；
+- 提供 `POST /v1/audio/transcriptions` 文件上传、`GET /health`；
+- 旧 `POST /transcribe {"path": "..."}` 仅保留给回环客户端；
+- 参与CPU/GPU统一串行调度，闲置到期软卸载，HTTP端口常驻；
+- 模型下载默认走国内镜像（HF_ENDPOINT=https://hf-mirror.com，可用环境变量覆盖）。
+
+启动参数（均可选）：
+    --port 8081         监听端口
+    --model small       模型：tiny/base/small/medium/large-v3
+    --device auto       auto / cuda / cpu；auto 时按空闲显存决定
+    --idle-seconds 180  闲置多久自动退出（0=不退出）
+"""
+
+import argparse
+import json
+import os
+import sys
+import threading
+import time
+from http.server import ThreadingHTTPServer
+from pathlib import Path
+if __package__:
+    from .AudioHttp import AudioHttp
+else:
+    from AudioHttp import AudioHttp
+
+sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+
+# 国内直连 HuggingFace 常常超时；镜像对 faster-whisper 的模型同样有效
+os.environ.setdefault("HF_ENDPOINT", "https://hf-mirror.com")
+
+_lock = threading.Lock()
+_request_lock = threading.Lock()
+_state = {"model": None, "device": "", "last_active": time.time(), "model_name": "", "requested_device": "auto"}
+
+
+def log(message):
+    """带时间戳打印到 stdout（启动方负责重定向）。"""
+    print(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] {message}", flush=True)
+
+
+def pick_device(requested):
+    """按空闲显存选设备：auto 且空闲 <900MB 时用 CPU。"""
+    if requested in ("cuda", "cpu"):
+        return requested
+    try:
+        import torch
+    except Exception:
+        return "cpu"
+    if not torch.cuda.is_available():
+        return "cpu"
+    try:
+        free, _total = torch.cuda.mem_get_info()
+        if free / 1024 / 1024 >= 900:
+            return "cuda"
+        log(f"空闲显存不足（{free / 1024 / 1024:.0f}MB），改用 CPU")
+    except Exception:
+        return "cpu"
+    return "cpu"
+
+
+def load_model(model_name, requested_device):
+    """懒加载模型；重复调用复用已加载实例。"""
+    with _lock:
+        if _state["model"] is not None:
+            return _state["model"], _state["device"]
+        from faster_whisper import WhisperModel
+
+        device = pick_device(requested_device)
+        started = time.time()
+        log(f"加载 faster-whisper 模型 {model_name}（device={device}）…")
+        if device == "cuda":
+            try:
+                model = WhisperModel(model_name, device="cuda", compute_type="float16")
+            except Exception as error:  # 常见于缺 cuDNN：退回 CPU
+                log(f"CUDA 加载失败（{error}），退回 CPU int8")
+                device = "cpu"
+                model = WhisperModel(model_name, device="cpu", compute_type="int8")
+        else:
+            model = WhisperModel(model_name, device="cpu", compute_type="int8")
+        _state["model"] = model
+        _state["device"] = device
+        log(f"模型就绪，用时 {time.time() - started:.1f}s")
+        return model, device
+
+
+def transcribe(path, language, vad_filter=True):
+    """转写一个本地音频/视频文件，返回全文与分段；CUDA 显存不足时自动改 CPU 重试一次。"""
+    if not os.path.isfile(path):
+        raise FileNotFoundError(path)
+    model, device = load_model(_state["model_name"], _state["requested_device"])
+
+    def run(current_model):
+        """真正解码（faster-whisper 是生成器，异常可能发生在取段时）。"""
+        started = time.time()
+        raw_segments, info = current_model.transcribe(path, language=language, vad_filter=bool(vad_filter))
+        segments = [
+            {"start": round(float(item.start), 2), "end": round(float(item.end), 2), "text": (item.text or "").strip()}
+            for item in raw_segments
+        ]
+        return segments, info, time.time() - started
+
+    try:
+        segments, info, elapsed = run(model)
+    except RuntimeError as error:
+        message = str(error).lower()
+        if device != "cuda" or ("out of memory" not in message and "cuda failed" not in message):
+            raise
+        log(f"CUDA 显存不足（{error}），卸载后改 CPU int8 重试")
+        with _lock:
+            _state["model"] = None
+            _state["device"] = ""
+        try:
+            import torch
+            torch.cuda.empty_cache()
+        except Exception:
+            pass
+        model, device = load_model(_state["model_name"], "cpu")
+        segments, info, elapsed = run(model)
+    text = "".join(item["text"] for item in segments).strip()
+    log(f"转写完成：{os.path.basename(path)} 用时 {elapsed:.1f}s 字数 {len(text)} 语言 {info.language}")
+    return {"ok": True, "text": text, "segments": segments, "device": device,
+            "model": _state["model_name"], "language": info.language}
+
+
+class Handler(AudioHttp):
+    """极简 HTTP：/health 与 /transcribe。"""
+
+    server_version = "whisper-service/1.1"
+    token_env = "SYNLOVE_ASR_API_KEY"
+
+    def _reply(self, code, payload):
+        """写 JSON 响应。"""
+        body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+        self.send_response(code)
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def do_GET(self):
+        """健康检查。"""
+        if not self.authorized():
+            return
+        if self.path.startswith("/health"):
+            return self._reply(200, {"ok": True, "service": "asr", "protocol": 1,
+                                     "loaded": _state["model"] is not None,
+                                     "device": _state["device"], "model": _state.get("model_name"),
+                                     "busy": _request_lock.locked(),
+                                     "idleSeconds": round(time.time() - _state["last_active"], 2),
+                                     "keepAliveSeconds": self.residency.coordinator.idle_seconds})
+        return self._reply(404, {"ok": False, "error": "unknown path"})
+
+    def do_POST(self):
+        """转写入口 / 卸载。"""
+        if not self.authorized():
+            return
+        route = self.path.split("?")[0]
+        if route == "/internal/gpu/unload":
+            if not self.is_local():
+                return self._reply(403, {"ok": False, "error": "local endpoint only"})
+            released = self.residency.unload_idle()
+            return self._reply(200 if released else 409, {
+                "ok": released, "loaded": _state["model"] is not None,
+                "busy": _request_lock.locked()})
+        if route in ("/unload", "/transcribe") and not self.is_local():
+            return self._reply(403, {"ok": False, "error": "local endpoint only"})
+        if route == "/unload":
+            if not _request_lock.acquire(False):
+                return self._reply(409, {"ok": False, "error": "busy"})
+            self._reply(200, {"ok": True, "note": "服务即将退出"})
+            log("收到 /unload，退出进程")
+            os._exit(0)
+        if route not in ("/transcribe", "/v1/audio/transcriptions", "/audio/transcriptions"):
+            return self._reply(404, {"ok": False, "error": "unknown path"})
+        temp = None
+        try:
+            if route == "/transcribe":
+                payload = self.read_json()
+            else:
+                temp, fields = self.read_upload()
+                payload = {"path": temp, "language": fields.get("language"),
+                           "vadFilter": fields.get("vad_filter", "true") != "false"}
+            with self.residency.request_slot():
+                result = transcribe(str(payload.get("path", "")), payload.get("language"), bool(payload.get("vadFilter", True)))
+            return self._reply(200, result)
+        except TimeoutError as error:
+            return self._reply(503, {"ok": False, "error": str(error)})
+        except ValueError as error:
+            self.close_connection = True
+            return self._reply(400, {"ok": False, "error": str(error)})
+        except Exception as error:  # noqa: BLE001
+            log(f"转写失败：{type(error).__name__}: {error}")
+            return self._reply(500, {"ok": False, "error": f"{type(error).__name__}: {error}"})
+        finally:
+            if temp:
+                os.unlink(temp)
+
+    def log_message(self, fmt, *args):  # noqa: D401
+        """压掉默认访问日志。"""
+        return
+
+
+def main(argv):
+    """入口：解析参数 → 起服务。"""
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--port", type=int, default=8081)
+    parser.add_argument("--host", default="127.0.0.1", help="监听地址，默认仅本机")
+    parser.add_argument("--api-key-env", default="SYNLOVE_ASR_API_KEY", help="Bearer 密钥的环境变量名")
+    parser.add_argument("--model", default="small")
+    parser.add_argument("--device", default="auto")
+    parser.add_argument("--idle-seconds", type=int, default=180,
+                        help="兼容旧参数；实际软卸载保温由统一gpuResidency.json管理")
+    args = parser.parse_args(argv)
+    Handler.token_env = args.api_key_env
+    if args.host not in ("127.0.0.1", "localhost", "::1") and not os.environ.get(args.api_key_env):
+        parser.error("非回环监听必须通过 --api-key-env 配置密钥")
+
+    _state["model_name"] = args.model
+    _state["requested_device"] = args.device
+    root = Path(__file__).resolve().parents[2]
+    sys.path.insert(0, str(root))
+    from gpuRuntime.GpuCoordinator import GpuCoordinator
+    from gpuRuntime.AsrResidency import AsrResidency
+    Handler.residency = AsrResidency(_state, _request_lock, GpuCoordinator(root, "asr"))
+    server = ThreadingHTTPServer((args.host, args.port), Handler)
+    server.timeout = 60
+    log(f"whisper 服务启动：端口 {args.port} 模型 {args.model} device={args.device} "
+        f"统一串行，保温{Handler.residency.coordinator.idle_seconds}s后软卸载")
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        pass
+
+
+if __name__ == "__main__":
+    main(sys.argv[1:])

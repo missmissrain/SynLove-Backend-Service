@@ -1,0 +1,16 @@
+runtime/
+logs/
+*.log
+.venv*/
+node_modules/
+__pycache__/
+*.pyc
+config/secrets.json
+config/*Secrets.json
+config/*.private.json
+config/terminalConnection.json
+config/ServerConfig.json
+config/TerminalConfig.json
+privateKeys/
+*.pem
+*.key

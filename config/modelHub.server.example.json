@@ -1,0 +1,142 @@
+{
+  "version": 1,
+  "service": {
+    "host": "127.0.0.1",
+    "port": 8810,
+    "protocol": 1,
+    "keepAliveSeconds": 600,
+    "defaultLeaseSeconds": 1800,
+    "secretEnvFile": "<redacted>",
+    "说明": "家庭服务器的实际权重路径；此文件不包含密钥。"
+  },
+  "models": [
+    {
+      "name": "llm-gemma",
+      "displayName": "Gemma 本地大模型",
+      "service": "llm",
+      "enabled": true,
+      "gpuManaged": true,
+      "releasePriority": 10,
+      "healthUrl": "http://127.0.0.1:8080/health",
+      "unloadUrl": "http://127.0.0.1:8080/internal/gpu/unload",
+      "tokenEnv": "<redacted>",
+      "estimatedVramMiB": 5000,
+      "weightPaths": [
+        "PRODUCTION_ROOT/repos/personal-agent/gemma/model/*.gguf",
+        "PRODUCTION_ROOT/repos/personal-agent/gemma/model/*.safetensors"
+      ],
+      "resourceManaged": true
+    },
+    {
+      "name": "tts-breeze",
+      "displayName": "Breeze TTS",
+      "service": "tts",
+      "enabled": true,
+      "gpuManaged": true,
+      "releasePriority": 20,
+      "healthUrl": "http://127.0.0.1:7862/health",
+      "unloadUrl": "http://127.0.0.1:7862/internal/gpu/unload",
+      "tokenEnv": "<redacted>",
+      "estimatedVramMiB": 4200,
+      "weightPaths": [
+        "C:/SynLove-models/breezeTts2-int8/*.safetensors",
+        "C:/SynLove-models/breezeTts2/*.safetensors"
+      ],
+      "resourceManaged": true
+    },
+    {
+      "name": "llm-saluki",
+      "displayName": "Saluki 27B GGUF",
+      "service": "llm-optional",
+      "enabled": true,
+      "gpuManaged": true,
+      "releasePriority": 15,
+      "estimatedVramMiB": 7800,
+      "weightPaths": [
+        "PRODUCTION_ROOT/external/models/saluki/*.gguf"
+      ],
+      "说明": "已发现权重，当前没有登记生产端口；不要把权重存在误报为服务在线。",
+      "resourceManaged": false
+    },
+    {
+      "name": "audio-moss",
+      "displayName": "MOSS 音效模型",
+      "service": "audio-effects",
+      "enabled": true,
+      "gpuManaged": true,
+      "releasePriority": 30,
+      "healthUrl": "http://127.0.0.1:18765/health",
+      "estimatedVramMiB": 4500,
+      "weightPaths": [
+        "PRODUCTION_ROOT/external/mossSoundEffect/models/*.gguf"
+      ],
+      "unloadUrl": "http://127.0.0.1:18765/internal/gpu/unload",
+      "resourceManaged": true
+    },
+    {
+      "name": "audio-ace-step",
+      "displayName": "ACE-Step 音频生成",
+      "service": "audio-generation",
+      "enabled": true,
+      "gpuManaged": true,
+      "releasePriority": 50,
+      "healthUrl": "http://127.0.0.1:18777/health",
+      "estimatedVramMiB": 5200,
+      "weightPaths": [
+        "PRODUCTION_ROOT/external/aceStepXlBase/checkpoints/acestep-v15-base/*.safetensors",
+        "PRODUCTION_ROOT/external/aceStepXlBase/checkpoints/acestep-5Hz-lm-1.7B/*.safetensors"
+      ],
+      "说明": "CUDA INT8 推理，组件按需卸载到 CPU；原生进程由网关独占管理。",
+      "unloadUrl": "http://127.0.0.1:18777/internal/gpu/unload",
+      "resourceManaged": true
+    },
+    {
+      "name": "embedding-qwen3",
+      "displayName": "Qwen3 Embedding",
+      "service": "embedding",
+      "enabled": true,
+      "gpuManaged": false,
+      "releasePriority": 60,
+      "estimatedVramMiB": 0,
+      "weightPaths": [
+        "PRODUCTION_ROOT/external/aceStepXlBase/checkpoints/Qwen3-Embedding-0.6B/*.safetensors"
+      ],
+      "resourceManaged": false
+    },
+    {
+      "name": "asr-whisper",
+      "displayName": "Whisper ASR",
+      "service": "asr",
+      "enabled": true,
+      "gpuManaged": false,
+      "releasePriority": 70,
+      "healthUrl": "http://127.0.0.1:8081/health",
+      "estimatedVramMiB": 0,
+      "weightPaths": [
+        "C:/Users/Administrator/.cache/huggingface/hub/models--Systran--faster-whisper-small/blobs/3e305921506d8872816023e4c273e75d2419fb89b24da97b4fe7bce14170d671"
+      ],
+      "tokenEnv": "<redacted>",
+      "resourceManaged": true,
+      "unloadUrl": "http://127.0.0.1:8081/internal/gpu/unload"
+    }
+  ],
+  "cloud": {
+    "enabled": true,
+    "timeoutSeconds": 900,
+    "usageRetentionDays": 30,
+    "providers": {
+      "dahuangf": {
+        "baseURL": "https://tokens.dahuangf.com/v1",
+        "api": "responses"
+      },
+      "qwen": {
+        "baseURL": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+        "api": "chat"
+      },
+      "workbuddy": {
+        "baseURL": "http://127.0.0.1:3425/v1",
+        "api": "chat"
+      }
+    }
+  }
+}

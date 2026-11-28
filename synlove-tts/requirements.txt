@@ -1,0 +1,4 @@
+torch>=2.3
+transformers>=4.44
+soundfile>=0.12
+numpy>=1.24

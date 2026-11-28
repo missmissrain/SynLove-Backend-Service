@@ -1,0 +1,38 @@
+{
+  "frames": 20,
+  "frameWidth": 640,
+  "maxSeconds": 600,
+  "ytdlp": {
+    "port": 8088,
+    "idleSeconds": 60
+  },
+  "whisper": {
+    "port": 8081,
+    "model": "small",
+    "language": "zh",
+    "idleSeconds": 120
+  },
+  "gemma": {
+    "endpoint": "http://127.0.0.1:8080/v1/chat/completions",
+    "model": "gemma-4-E4B-it-Q4_K_M",
+    "timeoutSeconds": 240
+  },
+  "paths": {
+    "media": "runtime/videoDigest",
+    "reports": "runtime/reports"
+  },
+  "login": {
+    "timeoutSeconds": 180,
+    "sites": [
+      "bilibili.com",
+      "xiaohongshu.com",
+      "douyin.com",
+      "weibo.com",
+      "zhihu.com",
+      "youtube.com"
+    ]
+  },
+  "perSheet": 4,
+  "sheetColumns": 2,
+  "cellWidth": 480
+}

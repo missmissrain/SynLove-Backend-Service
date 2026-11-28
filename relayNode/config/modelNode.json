@@ -1,0 +1,53 @@
+{
+  "hubUrl": "wss://relay.example.com/ws/node",
+  "token": "${RELAY_TOKEN}",
+  "nodeId": "",
+  "name": "家里台式机",
+  "heartbeatSeconds": 10,
+  "reconnectMinMs": 1000,
+  "reconnectMaxMs": 15000,
+  "logFile": "logs/modelNode.log",
+  "logLevel": "info",
+  "capabilities": [
+    {
+      "name": "chat",
+      "priority": 1,
+      "concurrency": 2
+    },
+    {
+      "name": "tts",
+      "priority": 1,
+      "concurrency": 1
+    },
+    {
+      "name": "asr",
+      "priority": 1,
+      "concurrency": 1
+    }
+  ],
+  "workers": {
+    "chat": {
+      "mode": "gemma",
+      "baseUrl": "http://127.0.0.1:8080/v1",
+      "model": "gemma-4-E4B-it-Q4_K_M",
+      "apiKeyEnv": "SYNLOVE_LLM_API_KEY",
+      "timeoutMs": 1200000
+    },
+    "tts": {
+      "mode": "openai",
+      "baseUrl": "http://127.0.0.1:7862",
+      "voice": "default",
+      "format": "mp3",
+      "timeoutMs": 1200000,
+      "apiKeyEnv": "SYNLOVE_TTS_API_KEY",
+      "model": "breeze-tts-2"
+    },
+    "asr": {
+      "mode": "openai",
+      "baseUrl": "http://127.0.0.1:8081",
+      "model": "whisper-base",
+      "timeoutMs": 1200000,
+      "apiKeyEnv": "SYNLOVE_ASR_API_KEY"
+    }
+  }
+}

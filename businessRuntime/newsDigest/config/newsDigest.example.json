@@ -1,0 +1,9 @@
+{
+  "enabled": true,
+  "sources": [{"name":"科技动态","type":"rsshub","path":"/36kr/newsflashes","limit":20}],
+  "interest":"科技、人工智能和重要民生消息，优先事实，不重复推送",
+  "maxItems":3,
+  "maxChars":160,
+  "hot":{"enabled":false},
+  "push":{"enabled":true}
+}

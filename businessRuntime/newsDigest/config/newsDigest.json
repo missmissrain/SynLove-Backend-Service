@@ -1,0 +1,24 @@
+{
+  "enabled": true,
+  "sources": [
+    {
+      "name": "RSSHub 中国新闻网",
+      "type": "rsshub",
+      "path": "/chinanews",
+      "limit": 60
+    }
+  ],
+  "interest": "关心 AI 与科技新品、消费与价格、健康和居家安全、本地民生政策；不关心体育赛事、娱乐八卦、明星绯闻。",
+  "maxItems": 5,
+  "maxChars": 300,
+  "hot": {
+    "enabled": true,
+    "maxWeibo": 3,
+    "maxBilibili": 2,
+    "maxRsshub": 2
+  },
+  "push": {
+    "enabled": true
+  },
+  "browser": {}
+}
