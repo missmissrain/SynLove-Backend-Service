@@ -1,9 +1,0 @@
-{
-  "keepAliveSeconds": 600,
-  "waitSeconds": 1200,
-  "memoryWaitSeconds": 180,
-  "services": {
-    "tts": {"port": 7862, "tokenEnv": "SYNLOVE_TTS_API_KEY", "memoryMarginMb": 1200},
-    "llm": {"port": 8080, "tokenEnv": "SYNLOVE_LLM_API_KEY"}
-  }
-}
