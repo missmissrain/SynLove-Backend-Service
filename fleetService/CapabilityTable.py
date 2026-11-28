@@ -17,6 +17,7 @@ class CapabilityTable:
         "file": "file.transfer",
         "screen_capture": "screen.capture",
         "codex_job": "coding.run",
+    "opencode_job": "coding.opencode",
         "audio": "audio.playback",
         "screen_observe": "screen.observe",
         "media": "media.display",
