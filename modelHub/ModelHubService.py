@@ -45,6 +45,8 @@ class ModelHubService:
     def _read_secret_env(self) -> dict[str, str]:
         """无参数；读取配置中指定的本机 env 文件，仅在内存中使用，不打印或写回。"""
         raw_path = self.registry.data.get("service", {}).get("secretEnvFile", "")
+        if raw_path and not os.path.isabs(raw_path):
+            raw_path = str((Path(self.root) / raw_path).resolve())
         if not raw_path:
             return {}
         path = Path(os.path.expandvars(str(raw_path)))

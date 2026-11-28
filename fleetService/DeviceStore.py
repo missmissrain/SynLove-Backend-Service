@@ -321,7 +321,7 @@ class DeviceStore:
                 raise ValueError("指令参数必须为对象")
             command = {**body, "id":key, "expiresAt":time.time()+240}
             text = json.dumps(command,ensure_ascii=False)
-            if len(text)>30000:
+            if len(text)>200000:
                 raise ValueError("指令过大")
             if CommandPrivacy.is_private(command):
                 self.transient.store_result("body:" + key, command)

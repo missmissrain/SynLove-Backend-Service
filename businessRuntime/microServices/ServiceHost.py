@@ -13,6 +13,11 @@ from urllib.parse import urlsplit
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
+sys.path.insert(0, str(ROOT.parents[1] / "personal-agent"))
+try:
+    from services.LogBus import bind as bind_log
+except ImportError:  # 日志库缺失不阻止业务服务启动
+    bind_log = None
 from services.ServiceRegistry import ServiceRegistry
 from microServices.ArtifactStore import ArtifactStore
 from microServices.McpAdapter import McpAdapter
@@ -245,6 +250,8 @@ class ServiceHost:
             self.close()
             raise ValueError("非回环监听必须设置服务apiKeyEnv对应密钥")
 
+        if bind_log is not None:
+            bind_log("business-" + self.name, ROOT)
         from microServices.ServiceHttpHandler import ServiceHttpHandler
         try:
             self.server = BoundedHttpServer((host, port), ServiceHttpHandler)
@@ -253,34 +260,43 @@ class ServiceHost:
             raise
         self.server.service = self
         self.server.daemon_threads = True
-        if self.cfg.get("background", True) and self.name in ("reminders", "digest"):
+        external = self.cfg.get("scheduler", "internal") == "external"
+        if (self.cfg.get("background", True) and self.name in ("reminders", "digest")
+                and not external):
             threading.Thread(target=self.run_schedule, daemon=True).start()
         try:
             self.server.serve_forever(poll_interval=0.2)
         finally:
             self.close()
 
-    def run_schedule(self):
-        """无参数；服务端独占调度，提醒每30秒轮询，新闻按服务时区每日领取一次。"""
+    def schedule_tick(self):
+        """无参数；领取到期的提醒或当日日报并提交执行，供内部循环与外部调度者共用。"""
         import time
         from microServices.ScheduleStore import ScheduleStore
         schedule = ScheduleStore(self.root, self.state / "schedule.sqlite") if self.name == "digest" else None
+        try:
+            if self.slot.locked():
+                return {"ok": True, "skipped": "busy"}
+            key = schedule.claim_due() if schedule else "reminder-tick-" + str(int(time.time() // 30))
+            if not key:
+                return {"ok": True, "skipped": "notDue"}
+            method = "tools/call" if schedule else "service/tick"
+            message = {"jsonrpc": "2.0", "id": key, "method": method}
+            if schedule:
+                message["params"] = {"name": "digest_run", "arguments": {}}
+            self.submit({"requestId": key, "message": message}, internal=True)
+            if schedule:
+                schedule.confirm_enqueued(key)
+            return {"ok": True, "key": key}
+        except Exception as error:
+            return {"ok": False, "error": type(error).__name__}
+
+    def run_schedule(self):
+        """无参数；内部调度循环（默认 30 秒），只调用 schedule_tick。"""
         while not self.closed.wait(30):
-            try:
-                if self.slot.locked():
-                    continue
-                key = schedule.claim_due() if schedule else "reminder-tick-" + str(int(time.time() // 30))
-                if not key:
-                    continue
-                method = "tools/call" if schedule else "service/tick"
-                message = {"jsonrpc": "2.0", "id": key, "method": method}
-                if schedule:
-                    message["params"] = {"name": "digest_run", "arguments": {}}
-                self.submit({"requestId": key, "message": message}, internal=True)
-                if schedule:
-                    schedule.confirm_enqueued(key)
-            except Exception as error:
-                print(f"{self.name}调度失败：{type(error).__name__}", file=sys.stderr, flush=True)
+            result = self.schedule_tick()
+            if not result.get("ok"):
+                print(f"{self.name}调度失败：{result.get('error')}", file=sys.stderr, flush=True)
 
     def close(self):
         """无参数；先阻止新调度，再停止业务子进程并等待执行池退出，最后释放独占锁。"""

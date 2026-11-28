@@ -66,7 +66,7 @@ def resolve_repo():
             return item
     raise RuntimeError(
         "找不到 breeze-tts 仓库（需要其下的 models 包）。请设置 BREEZE_REPO，"
-        "例如 BREEZE_REPO=PRODUCTION_ROOT\\repos\\personal-agent\\vendor\\breeze-tts；"
+        "例如 BREEZE_REPO=G:\\SynLove-houtai\\repos\\personal-agent\\vendor\\breeze-tts；"
         "已尝试：{}".format(" | ".join(str(item) for item in candidates)))
 
 

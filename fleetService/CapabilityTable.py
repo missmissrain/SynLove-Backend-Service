@@ -45,6 +45,11 @@ class CapabilityTable:
         "camera": "camera.presence",
         "location.coarse": "location.coarse",
         "location": "location.coarse",
+        "device.probe": "device.probe",
+        "avatar.action": "avatar.action",
+        "avatar.speech": "avatar.speech",
+        "shell.exec": "shell.exec",
+        "audio.playback": "audio.playback",
     }
 
     # 规范化：不同历史叫法统一到设备真正执行的命令类型。
@@ -64,6 +69,11 @@ class CapabilityTable:
         "route": "audio.route",
         "camera": "camera.presence",
         "location": "location.coarse",
+        "device.probe": "probe",
+        "shell.exec": "shell.exec",
+        "avatar.action": "avatar.action",
+        "avatar.speech": "avatar.speech",
+        "audio.playback": "audio",
     }
 
     @classmethod

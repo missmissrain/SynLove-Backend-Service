@@ -1,57 +1,57 @@
 {
-    "memoryWaitSeconds":  0,
-    "waitSeconds":  0,
-    "services":  {
-                     "tts":  {
-                                 "port":  7862,
-                                 "tokenEnv":  "SYNLOVE_TTS_API_KEY",
-                                 "memoryMarginMb":  600
-                             },
-                     "llm":  {
-                                 "port":  8080,
-                                 "tokenEnv":  "SYNLOVE_LLM_API_KEY"
-                             }
-                 },
-    "keepAliveSeconds":  600,
-    "cloudFallback":  {
-                          "secretsPath":  "PRODUCTION_ROOT\\repos\\personal-agent\\config\\secrets.json",
-                          "provider":  "qwen",
-                          "timeoutSeconds":  300,
-                          "model":  "qwen3.8-flash",
-                          "modelConfigPath":  "PRODUCTION_ROOT\\repos\\personal-agent\\config\\modelConfig.json",
-                          "enabled":  true
-                      },
-    "llmMemoryWaitSeconds":  0,
-    "releaseIdlePeersBeforeLoad":  true,
-    "strictSingleModel":  true,
-    "resourceBudgets":  {
-                            "default":  {
-                                            "minAvailableRamMiB":  1024,
-                                            "minCommitHeadroomMiB":  4096
-                                        },
-                            "llm":  {
-                                        "minAvailableRamMiB":  1536,
-                                        "minCommitHeadroomMiB":  8192
-                                    },
-                            "tts":  {
-                                        "minAvailableRamMiB":  1536,
-                                        "minCommitHeadroomMiB":  8192
-                                    },
-                            "asr":  {
-                                        "minAvailableRamMiB":  1024,
-                                        "minCommitHeadroomMiB":  2048
-                                    },
-                            "audio-effects":  {
-                                                  "minAvailableRamMiB":  1536,
-                                                  "minCommitHeadroomMiB":  12288
-                                              },
-                            "audio-generation":  {
-                                                     "minAvailableRamMiB":  1536,
-                                                     "minCommitHeadroomMiB":  30720,
-                                                     "prepareCommitCapacity":  true,
-                                                     "preparationSeconds":  60
-                                                 }
-                        },
-    "resourceShortageAction":  "wait",
-    "llmSlotWaitSeconds":  0
+  "memoryWaitSeconds": 0,
+  "waitSeconds": 0,
+  "services": {
+    "tts": {
+      "port": 7862,
+      "tokenEnv": "SYNLOVE_TTS_API_KEY",
+      "memoryMarginMb": 600
+    },
+    "llm": {
+      "port": 8080,
+      "tokenEnv": "SYNLOVE_LLM_API_KEY"
+    }
+  },
+  "keepAliveSeconds": 600,
+  "cloudFallback": {
+    "secretsPath": "../personal-agent/config/secrets.json",
+    "provider": "qwen",
+    "timeoutSeconds": 300,
+    "model": "qwen3.8-flash",
+    "modelConfigPath": "../personal-agent/config/modelConfig.json",
+    "enabled": true
+  },
+  "llmMemoryWaitSeconds": 0,
+  "releaseIdlePeersBeforeLoad": true,
+  "strictSingleModel": true,
+  "resourceBudgets": {
+    "default": {
+      "minAvailableRamMiB": 1024,
+      "minCommitHeadroomMiB": 4096
+    },
+    "llm": {
+      "minAvailableRamMiB": 1536,
+      "minCommitHeadroomMiB": 8192
+    },
+    "tts": {
+      "minAvailableRamMiB": 1536,
+      "minCommitHeadroomMiB": 8192
+    },
+    "asr": {
+      "minAvailableRamMiB": 1024,
+      "minCommitHeadroomMiB": 2048
+    },
+    "audio-effects": {
+      "minAvailableRamMiB": 1536,
+      "minCommitHeadroomMiB": 12288
+    },
+    "audio-generation": {
+      "minAvailableRamMiB": 1536,
+      "minCommitHeadroomMiB": 30720,
+      "prepareCommitCapacity": true,
+      "preparationSeconds": 60
+    }
+  },
+  "resourceShortageAction": "wait",
+  "llmSlotWaitSeconds": 0
 }

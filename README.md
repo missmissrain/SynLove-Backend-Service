@@ -1,54 +1,96 @@
-# SynLove · 后台服务
+# SynLove Backend Service
 
-模型与设备的运行时：ModelHub 统一管理本地模型与显存，fleetService 管理终端，
-businessRuntime 承载提醒、日报、视频摘要等业务服务。端口由部署配置决定，不在文档中固定。
+欣爱的后台服务：模型调度、语音合成、语音识别、本地大模型、业务运行时、中转节点与设备管理。
 
-## 服务
+它只关心「把模型和任务跑起来」，不关心人格与对话怎么组织。
 
-| 服务 | 说明 |
+## 功能
+
+### ModelHub（8810）
+
+- 统一登记所有可能占用 GPU 的模型：模型名、服务端口、健康地址、卸载接口
+- 显存预算与串行调度：先拿执行锁，再检查显存，必要时请求空闲同伴卸载
+- 加载 / 卸载 / 预热接口，健康状态与显存快照
+- 死同伴视为未运行，等待有上限，避免整条 GPU 管线被一个失联服务卡死
+
+### Breeze TTS（7862）
+
+- 固定声线合成，支持参考音克隆与情绪指令
+- int8 混合加载：6GB 显存可跑，权重按预算分配 GPU / CPU
+- 长文本按句分段，逐段合成再拼接
+- 闲置卸载显存、按需重新加载
+- OpenAI 风格 `/v1/audio/speech`，Bearer 鉴权
+
+### Whisper ASR（8081）
+
+- 语音转写，支持文件与流式
+- 与 TTS / LLM 共享显存协调
+- OpenAI 风格 `/v1/audio/transcriptions`
+
+### 本地 LLM（8080）
+
+- llama.cpp 服务代理，OpenAI 兼容
+- 空闲软卸载、显存阈值控制、失败分类
+- 与云端 provider 组成故障转移链
+
+### 设备管理 fleetService（17864）
+
+- 设备登记、心跳、能力表、在线状态
+- 指令队列：幂等 ID、状态机、真实回执
+- 语音信箱：离线暂存、上线投递
+- 播放路由：选目标设备、播放前复核
+- 媒体直传：`file.stream` 把音频 / 视频 / 图片推到终端，终端本地队列自动续播
+- 由 `personal-agent` 的 CoreService 进程内托管，代码归属本库
+
+### 业务运行时（8791 起）
+
+- 采集、调度、视频、新闻等常驻业务
+- 独立进程与端口，失败不影响主对话
+- 统一 supervisor 与日志
+
+### 中转节点 relayNode
+
+- 出站 WSS 节点，兼容 VPS 任务协议
+- 两种配置：模型节点（chat/tts/asr）与业务节点（采集/调度/视频）
+- 与 `synlove-relay` 共用同一套协议
+
+## 目录
+
+| 目录 | 内容 |
 |---|---|
-| ModelHub | 模型登记、租约、显存调度、云回退、用量统计 |
-| Breeze TTS | 固定参考声合成 |
-| Whisper ASR | 批量转写 |
-| 本地 LLM | Gemma 等本地模型 |
-| 设备管理 | `fleetService`：设备、配对、指令 |
-| 提醒 | 到期提醒，自迭代服务定时驱动 |
-| 新闻日报 | 每日领取一次，自迭代服务定时检查 |
-| 视频摘要 | 按需 |
-| 中继节点 | relayNode 连接 VPS Hub |
+| `modelHub/` | 模型登记、显存调度、租约 |
+| `gpuRuntime/` | GPU 协调、驻留、内存探测、调度状态 |
+| `synlove-tts/` | TTS 服务与权重加载 |
+| `synlove-asr/` | ASR 服务 |
+| `synlove-gemma/` | 本地 LLM 代理 |
+| `fleetService/` | 设备管理、指令、语音信箱、播放路由 |
+| `businessRuntime/` | 业务服务宿主与各业务实现 |
+| `relayNode/` | 出站中继节点（TS） |
+| `config/` | 示例配置（真实配置在 `models/config`） |
 
-## ModelHub
+## 运行
 
-- 登记模型权重（相对路径或环境变量），扫描显存与文件大小
-- 按租约加载/卸载，支持 keep-alive、空闲释放、优先级
-- 本地模型不可用时按配置回退云端
-- 对外：健康检查、模型清单、租约与用量接口（路径见部署配置）
+```bash
+python -m modelHub.runModelHub --root . --host 127.0.0.1 --port 8810 \
+  --config config/modelHub.server.json
 
-## 设备管理
-
-- 设备登记、一次性配对码、能力表校验
-- 指令队列：探测、shell、GUI、截图、媒体、通知、音频路由、定位、摄像头等
-- 能力不在设备心跳里就拒绝下发，不假装成功
-
-## 业务运行时
-
-- `ServiceHost`：每进程一个服务，串行执行槽，HTTP JSON-RPC
-- `schedule_tick`：领取到期提醒或当日日报；调度权可交给自迭代服务
+python services/breezeTtsService.py --port 7862 --device int8
+```
 
 ## 配置
 
-- 模型与密钥：部署根 `models/config/`
-- 服务登记：`config/modelHub.server.json`（相对路径）
-- 业务服务：`businessRuntime/config/serviceConfig.json`
-- 机器相关路径只放在环境变量或部署环境文件
+- 模型与服务登记：`models/config/modelHub.server.json`
+- 服务地址与鉴权：`models/config/serviceConfig.json`
+- 密钥：`models/config/secrets.json`（不入库）
+- GPU 策略：`config/gpuResidency.json`
 
-## 日志
+## 测试
 
-统一写入生产根 `runtime/logs/`：`all.log` 汇总，`modelhub.log`、`business-*.log` 分服务。
-路径解析与日志实现复用主库的公共模块。
+```bash
+python -m unittest discover -s tests -p "*Tests.py"
+```
 
-## 安全
+## 边界
 
-- 仓库不含权重、密钥、设备身份
-- 权重路径用相对路径或环境变量
-- 管理口只绑定回环，非回环必须独立鉴权
+- 不包含人格、渠道、在场判断，这些在 `personal-agent`
+- 设备管理代码在本库，但进程由 `personal-agent` 托管（17864）

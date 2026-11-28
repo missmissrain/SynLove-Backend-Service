@@ -75,7 +75,7 @@ class TerminalAdminHandler(BaseHTTPRequestHandler):
                 return
             self.send_json(200,result)
         except Exception as exc:
-            self.send_json(400,{"ok":False,"error":"终端请求失败："+type(exc).__name__})
+            self.send_json(400,{"ok":False,"error":"终端请求失败："+type(exc).__name__,"detail-exc":str(exc)[:300]})
 
     def send_json(self,status,data):
         """status/data为响应；JSON UTF8且禁止缓存。"""

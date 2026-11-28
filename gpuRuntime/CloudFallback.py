@@ -24,8 +24,15 @@ class CloudFallback:
         cfg = self.config
         if not cfg.get("enabled") or route != "/v1/chat/completions":
             raise RuntimeError("当前接口未配置云端兜底")
-        models = json.loads(Path(cfg["modelConfigPath"]).read_text("utf-8-sig"))
-        secrets = json.loads(Path(cfg["secretsPath"]).read_text("utf-8-sig"))
+        base = Path(__file__).resolve().parents[2]
+
+        def _resolve(value):
+            """value 为配置路径；相对路径按后台仓库根解析。"""
+            path = Path(value)
+            return path if path.is_absolute() else (base / path)
+
+        models = json.loads(_resolve(cfg["modelConfigPath"]).read_text("utf-8-sig"))
+        secrets = json.loads(_resolve(cfg["secretsPath"]).read_text("utf-8-sig"))
         provider = cfg["provider"]
         model = cfg["model"]
         definition = models["providers"][provider]

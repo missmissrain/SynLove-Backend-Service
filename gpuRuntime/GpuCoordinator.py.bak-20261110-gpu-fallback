@@ -1,0 +1,117 @@
+"""跨进程显存协调：先持有操作系统文件锁，再检查显存并请求空闲模型让位。
+
+注册参数root为后台仓库、name为tts或llm；config/gpuResidency.json可配置
+keepAliveSeconds（默认600秒）、waitSeconds（默认1200秒）、memoryWaitSeconds（默认180秒）。
+只访问固定回环卸载端点；不依据GPU利用率猜测任务是否结束，不处理其他应用。
+"""
+import contextlib
+import json
+import os
+import subprocess
+import time
+import urllib.error
+import urllib.request
+from pathlib import Path
+
+
+class GpuCoordinator:
+    """串行调度共享小显存的模型请求；进程退出时系统自动释放锁。"""
+
+    def __init__(self, root, name):
+        """root为共享后台根目录，name为当前模型；不在公开配置中保存凭据。"""
+        self.root = Path(root).resolve()
+        self.name = name
+        path = self.root / "config/gpuResidency.json"
+        self.config = json.loads(path.read_text("utf-8-sig")) if path.exists() else {}
+        self.idle_seconds = int(self.config.get("keepAliveSeconds", 600))
+        self.wait_seconds = float(self.config.get("waitSeconds", 1200))
+        self.memory_seconds = float(self.config.get("memoryWaitSeconds", 180))
+        if not 0 < self.idle_seconds <= 86400 or not 0 < self.wait_seconds <= 3600:
+            raise ValueError("显存驻留配置的保温和等待期限无效")
+        if not 0 < self.memory_seconds <= 3600:
+            raise ValueError("显存等待期限无效")
+        self.path = self.root / "runtime/gpuResidency/model.lock"
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        self.opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+
+    @contextlib.contextmanager
+    def request_slot(self):
+        """无参数；等待跨进程独占执行资格，整个模型加载及推理期间持有锁。"""
+        with self.path.open("a+b", buffering=0) as file:
+            if os.fstat(file.fileno()).st_size == 0:
+                file.write(b"\0")
+            deadline = time.monotonic() + self.wait_seconds
+            while True:
+                file.seek(0)
+                try:
+                    if os.name == "nt":
+                        import msvcrt
+                        msvcrt.locking(file.fileno(), msvcrt.LK_NBLCK, 1)
+                    else:
+                        import fcntl
+                        fcntl.flock(file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    break
+                except OSError:
+                    if time.monotonic() >= deadline:
+                        raise TimeoutError("等待其他模型完成推理超时，未打断正在执行的任务")
+                    time.sleep(0.1)
+            try:
+                yield
+            finally:
+                file.seek(0)
+                if os.name == "nt":
+                    import msvcrt
+                    msvcrt.locking(file.fileno(), msvcrt.LK_UNLCK, 1)
+                else:
+                    import fcntl
+                    fcntl.flock(file.fileno(), fcntl.LOCK_UN)
+
+    def free_memory(self):
+        """无参数；读取GPU空闲MiB，探测失败返回None，不通过利用率判定任务空闲。"""
+        try:
+            result = subprocess.run(
+                ["nvidia-smi", "--query-gpu=memory.free", "--format=csv,noheader,nounits"],
+                capture_output=True, text=True, timeout=5,
+                creationflags=0x08000000 if os.name == "nt" else 0)
+            return int(result.stdout.strip().splitlines()[0]) if result.returncode == 0 else None
+        except (OSError, ValueError, IndexError, subprocess.TimeoutExpired):
+            return None
+
+    def release_peer(self):
+        """无参数；仅请求另一已登记模型软卸载，HTTP409表示正在工作，不强制结束。"""
+        peer = "llm" if self.name == "tts" else "tts"
+        defaults = {"tts": {"port": 7862, "tokenEnv": "SYNLOVE_TTS_API_KEY"},
+                    "llm": {"port": 8080, "tokenEnv": "SYNLOVE_LLM_API_KEY"}}
+        cfg = {**defaults[peer], **self.config.get("services", {}).get(peer, {})}
+        port = int(cfg["port"])
+        if not 1 <= port <= 65535:
+            raise ValueError("显存协调端口无效")
+        headers = {"Content-Type": "application/json"}
+        key = os.environ.get(cfg["tokenEnv"], "")
+        if key:
+            headers["Authorization"] = "Bearer " + key
+        request = urllib.request.Request(
+            f"http://127.0.0.1:{port}/internal/gpu/unload",
+            data=b"{}", headers=headers, method="POST")
+        try:
+            with self.opener.open(request, timeout=30) as response:
+                reply = json.loads(response.read(65536))
+                return reply.get("ok") is True
+        except (OSError, ValueError):
+            return False
+
+    def ensure_memory(self, need_mb):
+        """need_mb为冷加载所需MiB；调用者须持有request_slot，显存不足立即请求空闲同伴让位。"""
+        deadline = time.monotonic() + self.memory_seconds
+        while True:
+            free = self.free_memory()
+            if free is None or free >= need_mb:
+                return
+            # 即便利用率为零，也由对方请求锁判定是否可以卸载。
+            self.release_peer()
+            free = self.free_memory()
+            if free is None or free >= need_mb:
+                return
+            if time.monotonic() >= deadline:
+                raise TimeoutError(f"可用显存不足：{free}MiB，需要约{need_mb}MiB；未终止其他应用")
+            time.sleep(0.25)

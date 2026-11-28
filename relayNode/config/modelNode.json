@@ -1,5 +1,5 @@
 {
-  "hubUrl": "wss://relay.example.com/ws/node",
+  "hubUrl": "wss://47.111.64.20/ws/node",
   "token": "${RELAY_TOKEN}",
   "nodeId": "",
   "name": "家里台式机",

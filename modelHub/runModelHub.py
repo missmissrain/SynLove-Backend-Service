@@ -7,7 +7,16 @@
 from __future__ import annotations
 
 import argparse
+import sys
 from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT.parent / "personal-agent"))
+try:
+    from services.LogBus import bind as bind_log
+except ImportError:  # 日志库缺失不阻止模型服务启动，但要在标准错误留痕
+    bind_log = None
+    print("LogBus 不可用：ModelHub 只写标准输出", file=sys.stderr)
 
 try:
     from .ModelHubService import run_model_hub
@@ -23,6 +32,8 @@ def main() -> None:
     parser.add_argument("--port", type=int, default=8810, help="管理接口端口")
     parser.add_argument("--config", default="", help="模型登记文件路径")
     args = parser.parse_args()
+    if bind_log is not None:
+        bind_log("modelhub", ROOT)
     run_model_hub(args.root, args.host, args.port, args.config or None)
 
 

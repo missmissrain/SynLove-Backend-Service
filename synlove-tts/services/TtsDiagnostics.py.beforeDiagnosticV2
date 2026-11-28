@@ -1,0 +1,43 @@
+# 功能：为TTS推理进程保存独立追加事件、周期线程栈和致命异常，避免重启覆盖证据。
+# 注册参数：folder为诊断目录；每个PID独立文件，默认每120秒保存线程栈，不保存正文或密钥。
+import faulthandler
+import hashlib
+import json
+import os
+import threading
+import time
+from pathlib import Path
+
+
+class TtsDiagnostics:
+    """只观测请求阶段和进程故障，不改变声音提示及采样。"""
+
+    def __init__(self, folder):
+        """folder为诊断根目录；启动时创建当前进程的事件与致命异常文件。"""
+        folder = Path(folder)
+        folder.mkdir(parents=True, exist_ok=True)
+        tag = time.strftime("%Y%m%d-%H%M%S") + "-" + str(os.getpid())
+        self.path = folder / ("tts-" + tag + ".jsonl")
+        self.lock = threading.Lock()
+        self.fault = (folder / ("tts-" + tag + "-fault.log")).open("a", encoding="utf-8")
+        faulthandler.enable(file=self.fault, all_threads=True)
+        faulthandler.dump_traceback_later(120, repeat=True, file=self.fault)
+        self.write_event("process_start")
+
+    def write_event(self, event, **fields):
+        """event为阶段名，fields仅放任务编号、参数和统计，不含音频、正文和鉴权。"""
+        row = {"time": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
+               "pid": os.getpid(), "event": event, **fields}
+        with self.lock, self.path.open("a", encoding="utf-8") as out:
+            out.write(json.dumps(row, ensure_ascii=False) + "\n")
+            out.flush()
+            os.fsync(out.fileno())
+
+    def record_request(self, task_id, payload):
+        """task_id为上游任务编号，payload只提取长度、哈希、引导参数和seed。"""
+        text = str(payload.get("input", payload.get("text", "")))
+        self.write_event("synthesis_start", taskId=task_id, chars=len(text),
+                         textSha256=hashlib.sha256(text.encode("utf-8")).hexdigest(),
+                         seed=payload.get("seed"), cfgScale=payload.get("cfgScale"),
+                         cfgScaleRef=payload.get("cfgScaleRef"),
+                         cfgScaleIns=payload.get("cfgScaleIns"))
